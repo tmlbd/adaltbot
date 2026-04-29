@@ -1216,7 +1216,7 @@ async def trending_movies(uid: int = 0):
 
 @app.get("/api/list")
 async def list_movies(page: int = 1, q: str = "", uid: int = 0):
-    limit = 1000
+    limit = 100
     skip = (page - 1) * limit
     query = {"title": {"$regex": q, "$options": "i"}} if q else {}
     
