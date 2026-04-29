@@ -14,7 +14,7 @@ from PIL import Image # নতুন ইমেজ লাইব্রেরি
 from pyrogram import Client as PyroClient # ২ জিবি ফাইল সাপোর্ট করার জন্য এড করা হলো
 
 # --- কনফিগারেশন ---
-TOKEN = os.getenv("BOT_TOKEN", "8726013622:AAG9-NdAB0KpieehpJwNBmbrs-9DhXGNNqc")
+TOKEN = os.getenv("BOT_TOKEN", "8726013622:AAHB80k_FJapyljFo42vbzwpsewETlNmKuY")
 MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://adalt:adalt@cluster0.5xe9gg4.mongodb.net/?appName=Cluster0")
 OWNER_ID = int(os.getenv("ADMIN_ID", "7525127704")) 
 APP_URL = os.getenv("APP_URL", "https://colourful-imelda-akashvaikh-76734afd.koyeb.app/")
@@ -34,7 +34,7 @@ pyro_bot = PyroClient("bot_pyro_session", api_id=API_ID, api_hash=API_HASH, bot_
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 client = AsyncIOMotorClient(MONGO_URL)
-db = client['movatabase']
+db = client['movie_database']
 
 admin_temp = {}
 admin_cache = set([OWNER_ID]) 
@@ -1216,7 +1216,7 @@ async def trending_movies(uid: int = 0):
 
 @app.get("/api/list")
 async def list_movies(page: int = 1, q: str = "", uid: int = 0):
-    limit = 1000
+    limit = 100
     skip = (page - 1) * limit
     query = {"title": {"$regex": q, "$options": "i"}} if q else {}
     
