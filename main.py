@@ -34,7 +34,7 @@ pyro_bot = PyroClient("bot_pyro_session", api_id=API_ID, api_hash=API_HASH, bot_
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 client = AsyncIOMotorClient(MONGO_URL)
-db = client['moviedatabase']
+db = client['movie_database']
 
 admin_temp = {}
 admin_cache = set([OWNER_ID]) 
@@ -85,7 +85,7 @@ async def create_screenshot_grid(video_path, output_path):
     except Exception:
         return False, 0
 
-# --- নতুন টাইম পার্সার ---
+# --- নতুন টাইম পার্সার (Flexible Time: 1h,1m,1s ফরম্যাট সাপোর্ট করার জন্য) ---
 def parse_duration(time_str):
     total_seconds = 0
     hours = re.search(r'(\d+)h', time_str)
@@ -98,7 +98,7 @@ def parse_duration(time_str):
         total_seconds = int(time_str) * 3600 # যদি শুধু সংখ্যা দেয় তবে ঘন্টা হিসেবে ধরবে
     return total_seconds if total_seconds > 0 else 86400
 
-# --- নতুন ব্লিংক লিঙ্ক পার্সার ---
+# --- নতুন ব্লিংক লিঙ্ক পার্সার (চ্যানেল আইডি ও লাস্ট মেসেজ আইডি বের করার জন্য) ---
 def parse_blink_link(link):
     pattern = r"t\.me/(?:c/)?([^/]+)/(\d+)"
     match = re.search(pattern, link)
@@ -138,10 +138,13 @@ async def blink_worker(chat_id, last_id, admin_id):
     success_count = 0
     for current_id in range(1, last_id + 1):
         try:
+            # Pyrogram দিয়ে মেসেজ গেট করা
             msg = await pyro_bot.get_messages(chat_id, current_id)
             if not msg or msg.empty: continue
             
+            # শুধুমাত্র ভিডিও বা ভিডিও ডকুমেন্ট থাকলে প্রসেস করবে
             if msg.video or (msg.document and "video" in msg.document.mime_type):
+                # সিরিয়াল কাউন্টার আপডেট
                 serial_res = await db.settings.find_one_and_update(
                     {"id": "auto_post_count"},
                     {"$inc": {"value": 1}},
@@ -151,6 +154,7 @@ async def blink_worker(chat_id, last_id, admin_id):
                 count_val = serial_res.get('value', 1)
                 title = f"🥵 New Hot Sex Video Number🥵 হট সেক্স ভাইরাল ভিডিও নাম্বার 🥵 {count_val}"
 
+                # ভিডিও ডাউনলোড ও গ্রিড তৈরি
                 video_path = await pyro_bot.download_media(msg)
                 grid_path = f"grid_blink_{random.randint(1000,9999)}.jpg"
                 
@@ -158,27 +162,34 @@ async def blink_worker(chat_id, last_id, admin_id):
                 duration_str = get_duration_display(duration_sec) if res else "0m"
 
                 if res:
+                    # গ্রিড ফটো আপলোড
                     with open(grid_path, 'rb') as f:
                         photo_msg = await bot.send_photo(CHANNEL_ID, photo=types.BufferedInputFile(f.read(), filename="grid.jpg"), 
                         caption=f"🎥 <b>নতুন মুভি যুক্ত হয়েছে!</b>\n\n🎬 নাম: <b>{title}</b>", parse_mode="HTML",
                         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🎬 মুভিটি দেখুন", url=f"https://t.me/{(await bot.get_me()).username}?start=new")]]))
                         photo_id = photo_msg.photo[-1].file_id
 
+                    # ডাটাবেসে মুভি সেভ
                     await db.movies.insert_one({
                         "title": title, "photo_id": photo_id, "file_id": (msg.video.file_id if msg.video else msg.document.file_id), 
                         "file_type": "video", "clicks": 0, "duration": duration_str, "created_at": datetime.datetime.utcnow()
                     })
                     success_count += 1
                 
+                # ক্লিনআপ
                 if os.path.exists(video_path): os.remove(video_path)
                 if os.path.exists(grid_path): os.remove(grid_path)
+                
+                # রেট লিমিট এড়াতে সামান্য বিরতি
                 await asyncio.sleep(1.5)
-        except Exception: continue
+                
+        except Exception:
+            continue
 
     await bot.send_message(admin_id, f"✅ <b>ব্লিংক ইন্ডেক্স সম্পন্ন!</b>\nমোট <b>{success_count}</b>টি ভিডিও সফলভাবে আপলোড হয়েছে।", parse_mode="HTML")
 
 # ==========================================
-# ১. মেইন ওনার (Owner) ও অ্যাডমিন কমান্ড সমূহ
+# ১. মেইন ওনার (Owner) ও অ্যাডমিন কমান্ড সমূহ (নতুন সহ)
 # ==========================================
 
 @dp.message(Command("addadmin"))
@@ -191,7 +202,7 @@ async def add_admin_cmd(m: types.Message):
         await db.admins.insert_one({"user_id": new_admin})
         admin_cache.add(new_admin)
         await m.answer(f"✅ নতুন অ্যাডমিন যুক্ত করা হয়েছে: <code>{new_admin}</code>", parse_mode="HTML")
-        try: await bot.send_message(new_admin, "🎉 <b>অভিনন্দন!</b> আপনাকে এই বটের অ্যাডমিন বানানো হয়েছে।", parse_mode="HTML")
+        try: await bot.send_message(new_admin, "🎉 <b>অভিনন্দন!</b> আপনাকে এই বটের অ্যাডমিন বানানো হয়েছে। আপনি এখন মুভি আপলোড করতে পারবেন।", parse_mode="HTML")
         except: pass
     except: await m.answer("⚠️ সঠিক নিয়ম: <code>/addadmin ইউজার_আইডি</code>", parse_mode="HTML")
 
@@ -215,6 +226,7 @@ async def list_admins_cmd(m: types.Message):
         if ad != OWNER_ID: text += f"👮 Admin: <code>{ad}</code>\n"
     await m.answer(text, parse_mode="HTML")
 
+# --- নতুন আনলিমিটেড ডিরেক্ট লিঙ্ক সিস্টেম কমান্ড ---
 @dp.message(Command("addlink"))
 async def add_ad_link(m: types.Message):
     if m.from_user.id not in admin_cache: return
@@ -244,6 +256,7 @@ async def del_ad_link(m: types.Message):
         await m.answer("✅ লিঙ্কটি ডিলিট করা হয়েছে।")
     except: await m.answer("⚠️ নিয়ম: `/dellink ID` (ID পাবেন /links কমান্ডে)")
 
+# --- নতুন অ্যাড সুইচ কমান্ড ---
 @dp.message(Command("monetag"))
 async def toggle_monetag(m: types.Message):
     if m.from_user.id not in admin_cache: return
@@ -262,6 +275,7 @@ async def toggle_adlink(m: types.Message):
         await m.answer(f"✅ Direct Link Ads এখন {'চালু (ON)' if status else 'বন্ধ (OFF)'}")
     except: await m.answer("⚠️ নিয়ম: `/adlink on` বা `/adlink off`")
 
+# --- মূল কোডের বাকি কমান্ডসমূহ ---
 @dp.message(Command("setsteps"))
 async def set_steps_cmd(m: types.Message):
     if m.from_user.id not in admin_cache: return
@@ -271,6 +285,7 @@ async def set_steps_cmd(m: types.Message):
         await m.answer(f"✅ অ্যাড স্টেপ সংখ্যা এখন: <b>{steps}</b>", parse_mode="HTML")
     except: await m.answer("⚠️ নিয়ম: `/setsteps 2`")
 
+# --- আপডেট করা সেট আনলক টাইম কমান্ড (Flexible Time Support) ---
 @dp.message(Command("setunlocktime"))
 async def set_unlock_time_cmd(m: types.Message):
     if m.from_user.id not in admin_cache: return
@@ -278,7 +293,7 @@ async def set_unlock_time_cmd(m: types.Message):
         raw_val = m.text.split(" ", 1)[1]
         seconds = parse_duration(raw_val)
         await db.settings.update_one({"id": "unlock_config"}, {"$set": {"seconds": seconds, "raw": raw_val}}, upsert=True)
-        await m.answer(f"✅ মুভি আনলক সময় সেট করা হয়েছে: <b>{raw_val}</b>", parse_mode="HTML")
+        await m.answer(f"✅ মুভি আনলক থাকার সময় সেট করা হয়েছে: <b>{raw_val}</b>", parse_mode="HTML")
     except: await m.answer("⚠️ নিয়ম: <code>/setunlocktime 1h,1m,10s</code>")
 
 @dp.message(Command("setnotice"))
@@ -317,6 +332,7 @@ async def set_foot_ad(m: types.Message):
         await m.answer("✅ ফুটার ব্যানার অ্যাড কোড আপডেট হয়েছে।")
     except: await m.answer("⚠️ নিয়ম: `/setfoot [অ্যাড কোড]`")
 
+# --- নতুন ব্লিংক কমান্ড (চ্যানেলের লাস্ট পোস্ট লিঙ্ক দিলে ১ থেকে ইন্ডেক্স করবে) ---
 @dp.message(Command("blink"))
 async def blink_cmd_handler(m: types.Message):
     if m.from_user.id not in admin_cache: return
@@ -325,12 +341,15 @@ async def blink_cmd_handler(m: types.Message):
         chat_id, last_id = parse_blink_link(link)
         if not chat_id or not last_id:
             return await m.answer("⚠️ <b>ভুল লিঙ্ক!</b> সঠিক উদাহরণ: <code>/blink https://t.me/your_channel/1234</code>", parse_mode="HTML")
+        
+        # ব্যাকগ্রাউন্ডে প্রসেস শুরু করা
         asyncio.create_task(blink_worker(chat_id, last_id, m.from_user.id))
-        await m.answer("⏳ চ্যানেলের আইডি 1 থেকে শুরু করে সব ভিডিও ইন্ডেক্স করা হচ্ছে।")
-    except: await m.answer("⚠️ নিয়ম: <code>/blink [চ্যানেলের শেষ পোস্ট লিঙ্ক]</code>", parse_mode="HTML")
+        await m.answer("⏳ চ্যানেলের আইডি 1 থেকে শুরু করে সব ভিডিও ইন্ডেক্স করা হচ্ছে। সম্পন্ন হলে জানানো হবে।")
+    except:
+        await m.answer("⚠️ নিয়ম: <code>/blink [চ্যানেলের শেষ পোস্ট লিঙ্ক]</code>", parse_mode="HTML")
 
 # ==========================================
-# ২. বটের সাধারণ অ্যাডমিন কমান্ড
+# ২. বটের সাধারণ অ্যাডমিন কমান্ড (আপনার আগের কোড)
 # ==========================================
 
 @dp.message(Command("start"))
@@ -338,12 +357,43 @@ async def start_cmd(message: types.Message):
     await db.users.update_one({"user_id": message.from_user.id}, {"$set": {"first_name": message.from_user.first_name}}, upsert=True)
     kb = [[types.InlineKeyboardButton(text="🎬 ওপেন মুভি অ্যাপ", web_app=types.WebAppInfo(url=APP_URL))]]
     markup = types.InlineKeyboardMarkup(inline_keyboard=kb)
+    
     uid = message.from_user.id
     if uid in admin_cache:
-        text = "👋 <b>হ্যালো অ্যাডমিন!</b>\n\n⚙️ <b>পোস্ট কমান্ড:</b>\n🔹 <code>/post</code> - ম্যানুয়াল\n🔹 <code>/new</code> - অটো স্ক্রিনশট\n🔹 <code>/auto</code> - ফুল অটো\n🔹 <code>/blink</code> - ইন্ডেক্স\n"
-    else: text = f"👋 <b>স্বাগতম {message.from_user.first_name}!</b>\n\n[আপনার টেলিগ্রাম আইডি: <code>{uid}</code>]\n\nমুভি দেখতে নিচের বাটনে ক্লিক করুন।"
+        text = (
+            "👋 <b>হ্যালো অ্যাডমিন!</b>\n\n"
+            "⚙️ <b>পোস্ট কমান্ড:</b>\n"
+            "🔹 <code>/post</code> - ম্যানুয়াল আপলোড (আগের মত)\n"
+            "🔹 <code>/new</code> - অটো স্ক্রিনশট আপলোড (নাম দিয়ে)\n"
+            "🔹 <code>/auto</code> - ফুল অটো (সিরিয়াল নাম + স্ক্রিনশট)\n"
+            "🔹 <code>/blink</code> - চ্যানেল ফুল ইন্ডেক্স (আইডি ১ থেকে)\n\n"
+            "⚙️ <b>সাধারণ কমান্ড:</b>\n"
+            "🔸 জোন: <code>/setad</code> | টেলিগ্রাম: <code>/settg</code> | 18+: <code>/set18</code>\n"
+            "🔸 সাইট নেম: <code>/setsitename [নাম]</code>\n"
+            "🔸 প্রোটেকশন: <code>/protect on</code> বা <code>/protect off</code>\n"
+            "🔸 অটো-ডিলিট টাইম: <code>/settime [মিনিট]</code>\n"
+            "🔸 আনলক টাইম: <code>/setunlocktime [সময়]</code>\n"
+            "🔸 ডিলিট: <code>/del</code> | স্ট্যাটাস: <code>/stats</code> | ব্রডকাস্ট: <code>/cast</code>\n"
+            "\n🆕 <b>অ্যাড সেটিংস:</b>\n"
+            "🔸 লিঙ্ক অ্যাড: <code>/addlink [URL]</code>\n"
+            "🔸 লিঙ্ক লিস্ট: <code>/links</code>\n"
+            "🔸 লিঙ্ক সুইচ: <code>/adlink on/off</code>\n"
+            "🔸 মনিটেগ সুইচ: <code>/monetag on/off</code>\n"
+            "🔸 স্টেপ: <code>/setsteps [সংখ্যা]</code>\n"
+            "🔸 নোটিশ: <code>/setnotice [টেক্সট]</code>\n"
+            "🔸 হেডার অ্যাড: <code>/sethead [কোড]</code>\n"
+            "🔸 মিডেল অ্যাড: <code>/setmid [কোড]</code>\n"
+            "🔸 ফুটার অ্যাড: <code>/setfoot [কোড]</code>\n"
+        )
+        if uid == OWNER_ID:
+            text += "\n👑 <b>ওনার কমান্ড:</b>\n🔸 অ্যাড অ্যাডমিন: <code>/addadmin ID</code>\n🔸 ডিলিট অ্যাডমিন: <code>/deladmin ID</code>\n🔸 অ্যাডমিন লিস্ট: <code>/adminlist</code>\n"
+            
+        text += "\n📥 <b>মুভি আপলোড করতে /post, /new বা /auto কমান্ড ব্যবহার করুন।</b>"
+    else:
+        text = f"👋 <b>স্বাগতম {message.from_user.first_name}!</b>\n\n[আপনার টেলিগ্রাম আইডি: <code>{uid}</code>]\n\nমুভি দেখতে নিচের বাটনে ক্লিক করুন।"
     await message.answer(text, reply_markup=markup, parse_mode="HTML")
 
+# --- নতুন আপলোড কমান্ডসমূহ ---
 @dp.message(Command("post"))
 async def post_cmd(m: types.Message):
     if m.from_user.id not in admin_cache: return
@@ -360,7 +410,7 @@ async def new_cmd(m: types.Message):
 async def auto_post_cmd(m: types.Message):
     if m.from_user.id not in admin_cache: return
     admin_temp[m.from_user.id] = {"step": "auto_serial_mode"}
-    await m.answer("🤖 <b>ফুল অটো মোড:</b> শুধু ভিডিও ফাইলটি পাঠান।")
+    await m.answer("🤖 <b>ফুল অটো মোড:</b> শুধু ভিডিও ফাইলটি পাঠান।\nবট অটোমেটিক সিরিয়াল নাম্বার ও স্ক্রিনশট দিয়ে পোস্ট করে দিবে।")
 
 @dp.message(Command("setsitename"))
 async def set_site_name(m: types.Message):
@@ -378,18 +428,24 @@ async def protect_cmd(m: types.Message):
         state = m.text.split(" ")[1].lower()
         if state == "on":
             await db.settings.update_one({"id": "protect_content"}, {"$set": {"status": True}}, upsert=True)
-            await m.answer("✅ ফরোয়ার্ড প্রোটেকশন <b>চালু (ON)</b> করা হয়েছে।", parse_mode="HTML")
+            await m.answer("✅ ফরোয়ার্ড প্রোটেকশন <b>চালু (ON)</b> করা হয়েছে। এখন কেউ মুভি ফরোয়ার্ড বা সেভ করতে পারবে না।", parse_mode="HTML")
         elif state == "off":
             await db.settings.update_one({"id": "protect_content"}, {"$set": {"status": False}}, upsert=True)
-            await m.answer("✅ ফরোয়ার্ড প্রোটেকশন <b>বন্ধ (OFF)</b> করা হয়েছে।", parse_mode="HTML")
-    except: pass
+            await m.answer("✅ ফরোয়ার্ড প্রোটেকশন <b>বন্ধ (OFF)</b> করা হয়েছে। এখন সবাই মুভি ফরোয়ার্ড করতে পারবে।", parse_mode="HTML")
+        else: await m.answer("⚠️ সঠিক নিয়ম: <code>/protect on</code> অথবা <code>/protect off</code>", parse_mode="HTML")
+    except: await m.answer("⚠️ সঠিক নিয়ম: <code>/protect on</code> अथवा <code>/protect off</code>", parse_mode="HTML")
 
 @dp.message(Command("stats"))
 async def stats_cmd(m: types.Message):
     if m.from_user.id not in admin_cache: return
     uc = await db.users.count_documents({})
     mc = await db.movies.count_documents({})
-    await m.answer(f"📊 <b>স্ট্যাটাস:</b>\n👥 মোট ইউজার: <code>{uc}</code>\n🎬 মোট মুভি: <code>{mc}</code>", parse_mode="HTML")
+    time_cfg = await db.settings.find_one({"id": "del_time"})
+    del_m = time_cfg['minutes'] if time_cfg else 60
+    protect_cfg = await db.settings.find_one({"id": "protect_content"})
+    prot_status = "ON 🔒" if protect_cfg and protect_cfg.get('status', True) else "OFF 🔓"
+    
+    await m.answer(f"📊 <b>স্ট্যাটাস:</b>\n👥 মোট ইউজার: <code>{uc}</code>\n🎬 মোট মুভি: <code>{mc}</code>\n⏳ অটো-ডিলিট: <code>{del_m} মিনিট</code>\n🛡️ প্রোটেকশন: <b>{prot_status}</b>", parse_mode="HTML")
 
 @dp.message(Command("del"))
 async def del_movie_list(m: types.Message):
@@ -418,13 +474,21 @@ async def set_del_time(m: types.Message):
             await m.answer(f"✅ অটো-ডিলিট টাইম সেট করা হয়েছে।")
         except: await m.answer("⚠️ সঠিক নিয়ম: <code>/settime 60</code>", parse_mode="HTML")
 
+@dp.message(Command("setad"))
+async def set_ad(m: types.Message):
+    if m.from_user.id in admin_cache:
+        try:
+            await db.settings.update_one({"id": "ad_config"}, {"$set": {"zone_id": m.text.split(" ")[1]}}, upsert=True)
+            await m.answer("✅ জোন আপডেট হয়েছে।")
+        except: await m.answer("⚠️ সঠিক নিয়ম: <code>/setad 1234567</code>", parse_mode="HTML")
+
 @dp.message(Command("settg"))
 async def set_tg(m: types.Message):
     if m.from_user.id in admin_cache:
         try:
             await db.settings.update_one({"id": "link_tg"}, {"$set": {"url": m.text.split(" ")[1]}}, upsert=True)
             await m.answer("✅ টেলিগ্রাম লিংক আপডেট হয়েছে।")
-        except: pass
+        except: await m.answer("⚠️ সঠিক নিয়ম: <code>/settg https://t.me/...</code>", parse_mode="HTML")
 
 @dp.message(Command("set18"))
 async def set_18(m: types.Message):
@@ -432,21 +496,24 @@ async def set_18(m: types.Message):
         try:
             await db.settings.update_one({"id": "link_18"}, {"$set": {"url": m.text.split(" ")[1]}}, upsert=True)
             await m.answer("✅ 18+ লিংক আপডেট হয়েছে।")
-        except: pass
+        except: await m.answer("⚠️ সঠিক নিয়ম: <code>/set18 https://t.me/...</code>", parse_mode="HTML")
 
-# --- ইনপুট প্রসেসিং ---
+# ==========================================
+# ৩. ইনপুট প্রসেসিং (আপলোড, ব্রডকাস্ট, রিপ্লাই) (আপনার আগের কোড)
+# ==========================================
+
 @dp.message(Command("cast"))
 async def broadcast_prep(m: types.Message):
     if m.from_user.id not in admin_cache: return
     admin_temp[m.from_user.id] = {"step": "bcast_wait"}
-    await m.answer("📢 <b>অ্যাডভান্সড ব্রডকাস্ট:</b> মেসেজটি পাঠান।", parse_mode="HTML")
+    await m.answer("📢 <b>অ্যাডভান্সড ব্রডকাস্ট:</b>\nযে মেসেজটি ব্রডকাস্ট করতে চান সেটি পাঠান।\n<i>নোট: বট অটোমেটিক মেসেজের নিচে '🎬 ওপেন মুভি অ্যাপ' বাটন লাগিয়ে দিবে।</i>", parse_mode="HTML")
 
 @dp.callback_query(F.data.startswith("reply_"))
 async def process_reply_cb(c: types.CallbackQuery):
     if c.from_user.id not in admin_cache: return
     user_id = int(c.data.split("_")[1])
     admin_temp[c.from_user.id] = {"step": "reply_user", "target_uid": user_id}
-    await c.message.reply("✍️ <b>ইউজারকে কী রিপ্লাই দিতে চান তা লিখে পাঠান:</b>", parse_mode="HTML")
+    await c.message.reply("✍️ <b>ইউজারকে কী রিপ্লাই দিতে চান তা লিখে পাঠান:</b>\n(টেক্সট, ছবি বা ভয়েস মেসেজ পাঠাতে পারেন)", parse_mode="HTML")
     await c.answer()
 
 @dp.message(F.content_type.in_({'text', 'photo', 'video', 'document', 'voice'}))
@@ -454,6 +521,7 @@ async def catch_all_inputs(m: types.Message):
     uid = m.from_user.id
     state = admin_temp.get(uid, {}).get("step")
     
+    # ইউজারকে রিপ্লাই দেওয়ার ফ্লো
     if uid in admin_cache and state == "reply_user":
         target_uid = admin_temp[uid]["target_uid"]
         del admin_temp[uid]
@@ -461,12 +529,14 @@ async def catch_all_inputs(m: types.Message):
             if m.text: await bot.send_message(target_uid, f"📩 <b>অ্যাডমিন রিপ্লাই:</b>\n\n{m.text}", parse_mode="HTML")
             else: await m.copy_to(target_uid, caption=f"📩 <b>অ্যাডমিন রিপ্লাই:</b>\n\n{m.caption or ''}", parse_mode="HTML")
             await m.answer("✅ ইউজারকে সফলভাবে রিপ্লাই পাঠানো হয়েছে!")
-        except Exception: await m.answer("⚠️ এরর!")
+        except Exception:
+            await m.answer("⚠️ রিপ্লাই পাঠানো যায়নি! ইউজার হয়তো বট ব্লক করেছে।")
         return
 
+    # ব্রডকাস্ট ফ্লো
     if uid in admin_cache and state == "bcast_wait":
         del admin_temp[uid]
-        await m.answer("⏳ শুরু হয়েছে...")
+        await m.answer("⏳ ব্রডকাস্ট শুরু হয়েছে...")
         kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🎬 ওপেন মুভি অ্যাপ", web_app=types.WebAppInfo(url=APP_URL))]])
         success = 0
         async for u in db.users.find():
@@ -475,20 +545,21 @@ async def catch_all_inputs(m: types.Message):
                 success += 1
                 await asyncio.sleep(0.05)
             except: pass
-        await m.answer(f"✅ সম্পন্ন! মোট {success}")
+        await m.answer(f"✅ সম্পন্ন! সর্বমোট <b>{success}</b> জনকে মেসেজ পাঠানো হয়েছে।", parse_mode="HTML")
         return
 
+    # --- ১. ম্যানুয়াল আপলোড ফ্লো (/post) ---
     if uid in admin_cache and (m.document or m.video) and state == "manual_file":
         fid = m.video.file_id if m.video else m.document.file_id
         ftype = "video" if m.video else "document"
         admin_temp[uid] = {"step": "manual_photo", "file_id": fid, "type": ftype}
-        await m.answer("✅ ফাইল পেয়েছি! এবার মুভির <b>পোস্টার (Photo)</b> সেন্ড করুন。", parse_mode="HTML")
+        await m.answer("✅ ফাইল পেয়েছি! এবার মুভির <b>পোস্টার (Photo)</b> সেন্ড করুন।", parse_mode="HTML")
         return
 
     if uid in admin_cache and m.photo and state == "manual_photo":
         admin_temp[uid]["photo_id"] = m.photo[-1].file_id
         admin_temp[uid]["step"] = "manual_title"
-        await m.answer("✅ পোস্টার পেয়েছি! এবার মুভির <b>নাম</b> লিখে পাঠান。", parse_mode="HTML")
+        await m.answer("✅ পোস্টার পেয়েছি! এবার মুভির <b>নাম</b> লিখে পাঠান।", parse_mode="HTML")
         return
 
     if uid in admin_cache and m.text and state == "manual_title":
@@ -498,51 +569,80 @@ async def catch_all_inputs(m: types.Message):
             "file_id": admin_temp[uid]["file_id"], "file_type": admin_temp[uid]["type"], 
             "clicks": 0, "duration": "Unknown", "created_at": datetime.datetime.utcnow()
         })
-        me = await bot.get_me()
-        kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🎬 মুভিটি দেখুন", url=f"https://t.me/{me.username}?start=new")]])
-        await bot.send_photo(CHANNEL_ID, photo=admin_temp[uid]["photo_id"], caption=f"🎥 <b>নতুন মুভি!</b>\n\n🎬 নাম: <b>{title}</b>", parse_mode="HTML", reply_markup=kb)
+        try:
+            me = await bot.get_me()
+            kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🎬 মুভিটি দেখুন", url=f"https://t.me/{me.username}?start=new")]])
+            await bot.send_photo(CHANNEL_ID, photo=admin_temp[uid]["photo_id"], caption=f"🎥 <b>নতুন মুভি যুক্ত করা হয়েছে!</b>\n\n🎬 নাম: <b>{title}</b>", parse_mode="HTML", reply_markup=kb)
+        except: pass
         del admin_temp[uid]
         await m.answer(f"🎉 <b>{title}</b> ম্যানুয়ালি যুক্ত করা হয়েছে!")
         return
 
+    # --- ২. অটো আপলোড ফ্লো (/new) এবং /auto প্রসেসিং ---
     if uid in admin_cache and m.text and state == "auto_name":
         admin_temp[uid] = {"step": "auto_file", "title": m.text.strip()}
-        await m.answer(f"✅ মুভি: <b>{m.text}</b>\nএবার ভিডিও ফাইলটি পাঠান (Max 2GB)。", parse_mode="HTML")
+        await m.answer(f"✅ মুভি: <b>{m.text}</b>\nএবার ভিডিও ফাইলটি পাঠান (Max 2GB)।", parse_mode="HTML")
         return
 
     if uid in admin_cache and (m.document or m.video) and (state == "auto_file" or state == "auto_serial_mode"):
         file = m.video or m.document
-        status_msg = await m.answer("⏳ প্রসেসিং শুরু হয়েছে...")
+        
+        status_msg = await m.answer("⏳ প্রসেসিং শুরু হয়েছে... ভিডিও থেকে ৬টি ল্যান্ডস্কেপ স্ক্রিনশট নেওয়া হচ্ছে। দয়া করে অপেক্ষা করুন।")
+        
         try:
+            # --- /auto কমান্ডের জন্য নাম তৈরি ---
             if state == "auto_serial_mode":
-                serial_res = await db.settings.find_one_and_update({"id": "auto_post_count"},{"$inc": {"value": 1}},upsert=True,return_document=True)
-                title = f"🥵 New Hot Sex Video Number🥵 {serial_res.get('value', 1)}"
-            else: title = admin_temp[uid]["title"]
+                # ডাটাবেস থেকে সিরিয়াল কাউন্টার আপডেট করা
+                serial_res = await db.settings.find_one_and_update(
+                    {"id": "auto_post_count"},
+                    {"$inc": {"value": 1}},
+                    upsert=True,
+                    return_document=True
+                )
+                count_val = serial_res.get('value', 1)
+                title = f"🥵 New Hot Sex Video Number🥵 হট সেক্স ভাইরাল ভিডিও নাম্বার 🥵 {count_val}"
+            else:
+                title = admin_temp[uid]["title"]
 
+            # --- Pyrogram দিয়ে ২ জিবি ফাইল ডাউনলোড লজিক ---
             video_path = await pyro_bot.download_media(m.video or m.document)
             grid_path = f"grid_poster_{uid}_{random.randint(100,999)}.jpg"
+            
+            # স্ক্রিনশট গ্রিড তৈরি (৬টি স্ক্রিনশট ২x৩ গ্রিড)
             res, duration_sec = await create_screenshot_grid(video_path, grid_path)
             duration_str = get_duration_display(duration_sec) if res else "0m"
             
             if res:
+                # গ্রিড ফটো আপলোড
                 with open(grid_path, 'rb') as f:
                     photo_msg = await bot.send_photo(m.chat.id, photo=types.BufferedInputFile(f.read(), filename="grid.jpg"), caption=f"🎬 {title}\n⏳ Duration: {duration_str}")
                     photo_id = photo_msg.photo[-1].file_id
                 
                 ftype = "video" if m.video else "document"
-                await db.movies.insert_one({"title": title, "photo_id": photo_id, "file_id": file.file_id, "file_type": ftype, "clicks": 0, "duration": duration_str, "created_at": datetime.datetime.utcnow()})
+                
+                await db.movies.insert_one({
+                    "title": title, "photo_id": photo_id, "file_id": file.file_id, 
+                    "file_type": ftype, "clicks": 0, "duration": duration_str, "created_at": datetime.datetime.utcnow()
+                })
+                
                 me = await bot.get_me()
                 kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🎬 মুভিটি দেখুন", url=f"https://t.me/{me.username}?start=new")]])
                 await bot.send_photo(CHANNEL_ID, photo=photo_id, caption=f"🎥 <b>নতুন মুভি যুক্ত হয়েছে!</b>\n\n🎬 নাম: <b>{title}</b>", parse_mode="HTML", reply_markup=kb)
-                await status_msg.edit_text(f"🎉 <b>{title}</b> সফলভাবে যুক্ত হয়েছে!")
+                
+                await status_msg.edit_text(f"🎉 <b>{title}</b> স্ক্রিনশট সহ সফলভাবে যুক্ত হয়েছে!")
+            else:
+                await status_msg.edit_text("❌ স্ক্রিনশট নিতে ব্যর্থ হয়েছে। দয়া করে /post ব্যবহার করুন।")
             
+            # ক্লিনআপ
             if os.path.exists(video_path): os.remove(video_path)
             if os.path.exists(grid_path): os.remove(grid_path)
             if uid in admin_temp: del admin_temp[uid]
-        except Exception as e: await status_msg.edit_text(f"❌ এরর: {e}")
+
+        except Exception as e:
+            await status_msg.edit_text(f"❌ এরর: {str(e)}")
 
 # ==========================================
-# ৪. ওয়েব অ্যাপ UI
+# ৪. ওয়েব অ্যাপ UI এবং APIs (৪ কলাম গ্রিড ও নো-পেজিনেশন আপডেট)
 # ==========================================
 
 @app.get("/", response_class=HTMLResponse)
@@ -556,12 +656,15 @@ async def web_ui():
     h_ad = await db.settings.find_one({"id": "header_ad"})
     m_ad = await db.settings.find_one({"id": "middle_ad"})
     f_ad = await db.settings.find_one({"id": "footer_ad"})
+    
     monetag_cfg = await db.settings.find_one({"id": "monetag_status"})
     adlink_cfg = await db.settings.find_one({"id": "adlink_status"})
     all_links = await db.ad_links.find().to_list(length=100)
     direct_links = [l['url'] for l in all_links] if all_links else []
     
     zone_id = ad_cfg['zone_id'] if ad_cfg else "10916755"
+    tg_url = tg_cfg['url'] if tg_cfg else "https://t.me/MovieeBD"
+    link_18 = b18_cfg['url'] if b18_cfg else "https://t.me/MovieeBD"
     site_name = sn_cfg['name'] if sn_cfg else "MovieZone"
     notice_text = nt_cfg['text'] if nt_cfg else "মুভি অ্যাপে স্বাগতম!"
     total_steps = st_cfg['count'] if st_cfg else 2
@@ -585,76 +688,116 @@ async def web_ui():
             .main-container { max-width: 600px; margin: 0 auto; background: #0f172a; min-height: 100vh; }
             header { display:flex; justify-content:space-between; align-items:center; padding:15px; border-bottom:1px solid #1e293b; background:#0f172a; position:sticky; top:0; z-index:1000; }
             .logo { font-size:22px; font-weight:bold; }
-            .notice-bar { background: red; color: white; padding: 10px; font-size: 14px; text-align: center; }
-            .ad-slot { width: 100%; display: flex; justify-content: center; padding: 10px 0; }
-            .search-box { padding:15px; }
-            .search-input { width: 100%; padding:14px; border-radius:25px; border:none; text-align:center; background:#1e293b; color:#fff; font-size:16px; }
+            .logo span { background:red; color:#fff; padding:2px 5px; border-radius:5px; margin-left:5px; font-size:16px; }
+            .user-info { display:flex; align-items:center; gap:8px; background:#1e293b; padding:5px 12px; border-radius:20px; font-weight:bold; font-size:14px; }
+            .user-info img { width:26px; height:26px; border-radius:50%; object-fit:cover; }
+            .notice-bar { background: linear-gradient(90deg, #f87171, #ef4444); color: white; padding: 10px; font-size: 14px; font-weight: bold; text-align: center; overflow: hidden; white-space: nowrap; }
+            .notice-content { display: inline-block; animation: scroll-text 15s linear infinite; }
+            @keyframes scroll-text { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+            .ad-slot { width: 100%; display: flex; justify-content: center; align-items: center; padding: 10px 0; overflow: hidden; min-height: 50px; background: rgba(30, 41, 59, 0.5); margin: 5px 0; }
+            .search-box { padding:15px; display: flex; align-items: center; gap: 10px; }
+            .back-btn { background: #1e293b; color: white; border: none; padding: 10px 15px; border-radius: 50%; cursor: pointer; display: none; }
+            .search-input { flex: 1; padding:14px; border-radius:25px; border:none; outline:none; text-align:center; background:#1e293b; color:#fff; font-size:16px; transition: 0.3s; }
+            .section-title { padding: 5px 15px 10px; font-size: 18px; font-weight: bold; color: #f87171; display:flex; align-items:center; gap:8px;}
+            .trending-container { display: flex; overflow-x: auto; gap: 12px; padding: 0 15px 20px; scroll-behavior: smooth; }
+            .trending-container::-webkit-scrollbar { display: none; }
+            .trending-card { min-width: 80%; background: #1e293b; border-radius: 12px; overflow: hidden; cursor: pointer; flex-shrink: 0; position:relative;}
+            .trending-card img { height: 180px; object-fit:cover; width:100%; border-radius:10px; display:block; }
             
-            /* ৪ কলাম গ্রিড লেআউট */
-            .grid { 
-                padding:0 8px 120px; 
-                display: grid; 
-                grid-template-columns: repeat(4, 1fr); 
-                gap: 5px; 
-            }
-            .card { background:#1e293b; border-radius:8px; overflow:hidden; cursor:pointer; position: relative; border: 1px solid #334155;}
-            .post-content img { width:100%; height:110px; object-fit:cover; display:block; border-radius: 5px; }
+            /* ৪ কলাম গ্রিড লেআউট - নতুন পরিবর্তন */
+            .grid { padding:0 10px 120px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+            .card { background:#1e293b; border-radius:8px; overflow:hidden; cursor:pointer; transition: transform 0.2s; border: 1px solid #334155; position: relative;}
+            .card:active { transform: scale(0.98); }
+            .post-content { position:relative; padding: 2px; border-radius: 8px; background: linear-gradient(45deg, #ff0000, #ff7300, #fffb00); background-size: 400%; animation: glowing 8s linear infinite; }
+            @keyframes glowing { 0% { background-position: 0 0; } 50% { background-position: 400% 0; } 100% { background-position: 0 0; } }
+            .post-content img { width:100%; height:110px; object-fit:cover; display:block; border-radius: 6px; }
             
-            .duration-badge { position: absolute; top: 5px; left: 5px; background: rgba(0,0,0,0.8); color: #fff; padding: 2px 4px; border-radius: 4px; font-size: 8px; z-index: 10; }
-            .tag { position:absolute; top:5px; right:5px; font-size: 8px; padding: 2px 4px; border-radius: 4px; z-index: 10;}
+            /* গ্রিড ছোট হওয়ায় ব্যাজগুলো ছোট করা হলো */
+            .duration-badge { position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,0.8); color: #fff; padding: 2px 4px; border-radius: 4px; font-size: 8px; font-weight: bold; z-index: 105; }
+            .tag { position:absolute; top:4px; right:4px; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:8px; display:flex; align-items:center; gap:2px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index: 100;}
             .tag-locked { background:rgba(0,0,0,0.85); color:#f87171; border: 1px solid #f87171; }
             .tag-unlocked { background:rgba(0,0,0,0.85); color:#10b981; border: 1px solid #10b981; }
-            .view-badge { position:absolute; bottom:5px; left:5px; background:rgba(0,0,0,0.7); color:#fff; padding: 2px 4px; border-radius: 4px; font-size: 8px; }
+            .unlock-timer { position: absolute; top: 4px; right: 4px; background: rgba(16, 185, 129, 0.9); color: white; padding: 2px 4px; border-radius: 4px; font-size: 8px; font-weight: bold; z-index: 101; display: none; }
+            .view-badge { position:absolute; bottom:4px; left:4px; background:rgba(0,0,0,0.7); color:#fff; padding:2px 4px; border-radius:4px; font-size:8px; font-weight:bold; display:flex; align-items:center; gap:2px; }
+            .card-footer { padding:5px; font-size:9px; font-weight:bold; text-align:center; word-wrap: break-word; color:#e2e8f0; line-height:1.2; height: 34px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
-            .card-footer { padding:5px 2px; font-size:9px; font-weight:bold; text-align:center; color:#e2e8f0; height: 32px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;}
-            
+            .skeleton { background: #1e293b; border-radius: 12px; height: 180px; overflow: hidden; position: relative; }
+            .skeleton::after { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent); animation: shimmer 1.5s infinite; }
+            @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+            .floating-btn { position:fixed; right:20px; color:white; width:50px; height:50px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:bold; z-index:500; cursor:pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+            .btn-18 { bottom:155px; background:red; border:2px solid #fff; }
+            .btn-tg { bottom:95px; background:#24A1DE; }
+            .btn-req { bottom:35px; background:#10b981; }
+
             .ad-screen { position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; display:none; flex-direction:column; align-items:center; justify-content:center; z-index:2000; padding: 20px; }
+            .screen-back { position: absolute; top: 20px; left: 20px; background: #1e293b; color: #f87171; padding: 10px 15px; border-radius: 20px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 5px; border: 1px solid #f87171; }
             .timer { width:80px; height:80px; border-radius:50%; border:5px solid red; display:flex; align-items:center; justify-content:center; font-size:30px; margin-bottom:20px; color:red; font-weight:bold; }
-            .btn-visit { background:#f87171; color:white; padding:15px 30px; border-radius:30px; font-size:18px; font-weight:bold; cursor:pointer; width:80%; text-align:center; text-decoration:none; display:block; }
-            .btn-next { background:#10b981; color:white; padding:15px 30px; border-radius:30px; font-size:18px; font-weight:bold; cursor:pointer; display:none; width:80%; }
+            .btn-visit { background:#f87171; color:white; border:none; padding:15px 30px; border-radius:30px; font-size:18px; font-weight:bold; cursor:pointer; width:80%; text-align:center; text-decoration:none; display:block; margin-top:10px;}
+            .btn-next { background:#10b981; color:white; border:none; padding:15px 30px; border-radius:30px; font-size:18px; font-weight:bold; cursor:pointer; display:none; width:80%; margin-top:10px; }
             .modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:none; align-items:center; justify-content:center; z-index:3000; }
             .modal-content { background:#1e293b; width:90%; padding:30px; border-radius:15px; text-align:center; }
+            .btn-submit { background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; width:100%; font-size:16px;}
         </style>
     </head>
     <body>
         <div class="main-container">
-            <header><div class="logo">{{SITE_NAME}}</div></header>
-            <div class="notice-bar">{{NOTICE_TEXT}}</div>
+            <header>
+                <div class="logo">{{SITE_NAME}} <span>BD</span></div>
+                <div class="user-info"><span id="uName">Guest</span><img id="uPic" src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png"></div>
+            </header>
+            <div class="notice-bar"><div class="notice-content">{{NOTICE_TEXT}}</div></div>
             <div class="ad-slot">{{HEADER_AD}}</div>
-            <div class="search-box"><input type="text" id="searchInput" class="search-input" placeholder="মুভি খুঁজুন..."></div>
+            <div class="search-box">
+                <button class="back-btn" id="searchBack" onclick="clearSearch()"><i class="fa-solid fa-arrow-left"></i></button>
+                <input type="text" id="searchInput" class="search-input" placeholder="মুভি খুঁজুন...">
+            </div>
             <div class="ad-slot">{{MIDDLE_AD}}</div>
+            <div id="trendingWrapper">
+                <div class="section-title"><i class="fa-solid fa-fire"></i> ট্রেন্ডিং মুভি</div>
+                <div class="trending-container" id="trendingGrid"></div>
+            </div>
+            <div class="section-title"><i class="fa-solid fa-film"></i> সব মুভি</div>
             <div class="grid" id="movieGrid"></div>
             <div class="ad-slot">{{FOOTER_AD}}</div>
         </div>
 
         <div id="adScreen" class="ad-screen">
+            <div class="screen-back" onclick="closeAdScreen()"><i class="fa-solid fa-arrow-left"></i> ফিরে যান</div>
+            <img id="adMoviePoster" style="width:100%; max-width:300px; height:180px; object-fit:cover; border-radius:15px; margin-bottom:20px; border:2px solid #f87171;">
+            <div class="step-text" id="stepLabel" style="font-size:18px; font-weight:bold; color:#f87171; margin-bottom:10px;">Step 1/2</div>
             <div class="timer" id="timer">0</div>
-            <p id="adMsg" style="text-align:center; margin-bottom:15px; color:#fff;">অ্যাড ভিজিট করুন এবং ১৫ সেকেন্ড অপেক্ষা করুন।</p>
             <a href="#" target="_blank" class="btn-visit" id="btnVisit" onclick="startTimer()">Visit Ad & Unlock</a>
-            <button class="btn-next" id="btnNext" onclick="handleNextStep()">Next Step</button>
+            <button class="btn-next" id="btnNext" onclick="handleNextStep()">Next Step <i class="fa-solid fa-arrow-right"></i></button>
         </div>
 
-        <div id="successModal" class="modal"><div class="modal-content"><h2>সম্পন্ন হয়েছে!</h2><p>বটের ইনবক্স চেক করুন।</p><button style="margin-top:10px; padding:10px 20px; background:#10b981; border:none; color:#fff; border-radius:5px;" onclick="tg.close()">বটে ফিরে যান</button></div></div>
+        <div id="successModal" class="modal"><div class="modal-content"><h2 style="color:#10b981;">সফল হয়েছে!</h2><p style="color:gray; margin:15px 0;">বট চেক করুন। মুভি পাঠানো হয়েছে।</p><button class="btn-submit" onclick="tg.close()">বটে ফিরে যান</button></div></div>
+
+        <div class="floating-btn btn-18" onclick="window.open('{{LINK_18}}')">18+</div>
+        <div class="floating-btn btn-tg" onclick="window.open('{{TG_LINK}}')"><i class="fa-brands fa-telegram"></i></div>
 
         <script>
             let tg = window.Telegram.WebApp; tg.expand();
-            const ZONE_ID = "10916755";
+            const ZONE_ID = "{{ZONE_ID}}";
             const MONETAG_ON = {{MONETAG_ON}};
-            const ADLINK_ON = {{ADLINK_ON}};
             const DIRECT_LINKS = {{DIRECT_LINKS}};
             const TOTAL_STEPS = {{TOTAL_STEPS}};
             let uid = tg.initDataUnsafe.user?.id || 0;
-            let currentAdStep = 1; let currentMovieId = "";
+            let searchQuery = ""; let currentAdStep = 1; let currentMovieId = "";
 
-            async function loadMovies(q = "") {
-                const grid = document.getElementById('movieGrid');
-                const r = await fetch(`/api/list?q=${q}&uid=${uid}`);
+            if(tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                document.getElementById('uName').innerText = tg.initDataUnsafe.user.first_name;
+            }
+
+            async function loadTrending() {
+                const r = await fetch(`/api/trending?uid=${uid}`);
                 const data = await r.json();
-                grid.innerHTML = data.movies.map(m => `
-                    <div class="card" onclick="handleMovieClick('${m._id}', ${m.is_unlocked}, '${m.photo_id}')">
+                const grid = document.getElementById('trendingGrid');
+                grid.innerHTML = data.map(m => `
+                    <div class="trending-card" onclick="handleMovieClick('${m._id}', ${m.is_unlocked}, '${m.photo_id}')">
                         <div class="post-content">
                             <div class="duration-badge">${m.duration || '0m'}</div>
-                            <img src="/api/image/${m.photo_id}" onerror="this.src='https://via.placeholder.com/200x110'">
+                            <img src="/api/image/${m.photo_id}">
                             <div class="tag ${m.is_unlocked ? 'tag-unlocked' : 'tag-locked'}">${m.is_unlocked ? '🔓' : '🔒'}</div>
                             <div class="view-badge">👁 ${m.clicks}</div>
                         </div>
@@ -662,17 +805,33 @@ async def web_ui():
                     </div>`).join('');
             }
 
+            async function loadMovies() {
+                const r = await fetch(`/api/list?q=${searchQuery}&uid=${uid}`);
+                const data = await r.json();
+                const grid = document.getElementById('movieGrid');
+                grid.innerHTML = data.movies.map(m => `
+                    <div class="card" onclick="handleMovieClick('${m._id}', ${m.is_unlocked}, '${m.photo_id}')">
+                        <div class="post-content">
+                            <div class="duration-badge">${m.duration || '0m'}</div>
+                            <img src="/api/image/${m.photo_id}">
+                            <div class="tag ${m.is_unlocked ? 'tag-unlocked' : 'tag-locked'}">${m.is_unlocked ? '🔓' : '🔒'}</div>
+                            <div class="view-badge">👁 ${m.clicks}</div>
+                        </div>
+                        <div class="card-footer">${m.title}</div>
+                    </div>`).join('');
+            }
+
+            document.getElementById('searchInput').addEventListener('input', e => { searchQuery = e.target.value; loadMovies(); });
+
             function handleMovieClick(id, isUnlocked, photoId) {
                 if(isUnlocked) sendFile(id);
-                else { currentMovieId = id; currentAdStep = 1; document.getElementById('adScreen').style.display = 'flex'; showAdScreen(); }
+                else { currentMovieId = id; currentAdStep = 1; document.getElementById('adMoviePoster').src = `/api/image/${photoId}`; document.getElementById('adScreen').style.display = 'flex'; showAdScreen(); }
             }
 
             function showAdScreen() {
-                document.getElementById('btnVisit').style.display = 'block';
-                document.getElementById('btnNext').style.display = 'none';
-                document.getElementById('timer').innerText = "15";
-                let link = DIRECT_LINKS[Math.floor(Math.random() * DIRECT_LINKS.length)] || "#";
-                document.getElementById('btnVisit').href = link;
+                document.getElementById('stepLabel').innerText = `Step ${currentAdStep}/${TOTAL_STEPS}`;
+                document.getElementById('btnVisit').style.display = 'block'; document.getElementById('btnNext').style.display = 'none'; document.getElementById('timer').innerText = "15";
+                document.getElementById('btnVisit').href = DIRECT_LINKS[Math.floor(Math.random() * DIRECT_LINKS.length)] || "#";
             }
 
             function startTimer() {
@@ -690,23 +849,39 @@ async def web_ui():
 
             async function sendFile(id) {
                 await fetch('/api/send', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({userId: uid, movieId: id})});
-                document.getElementById('adScreen').style.display = 'none';
-                document.getElementById('successModal').style.display = 'flex';
+                document.getElementById('adScreen').style.display = 'none'; document.getElementById('successModal').style.display = 'flex';
             }
 
-            document.getElementById('searchInput').addEventListener('input', e => loadMovies(e.target.value));
-            loadMovies();
+            function closeAdScreen() { document.getElementById('adScreen').style.display = 'none'; }
+            loadTrending(); loadMovies();
         </script>
     </body>
     </html>
     """
-    final_html = html_code.replace("{{SITE_NAME}}", site_name).replace("{{NOTICE_TEXT}}", notice_text).replace("{{HEADER_AD}}", header_code).replace("{{MIDDLE_AD}}", middle_code).replace("{{FOOTER_AD}}", footer_code)
-    final_html = final_html.replace("{{MONETAG_ON}}", "true" if monetag_on else "false").replace("{{ADLINK_ON}}", "true" if adlink_on else "false").replace("{{DIRECT_LINKS}}", str(direct_links)).replace("{{TOTAL_STEPS}}", str(total_steps))
+    final_html = html_code.replace("{{ZONE_ID}}", zone_id).replace("{{TG_LINK}}", tg_url).replace("{{LINK_18}}", link_18).replace("{{SITE_NAME}}", site_name)
+    final_html = final_html.replace("{{NOTICE_TEXT}}", notice_text).replace("{{TOTAL_STEPS}}", str(total_steps)).replace("{{HEADER_AD}}", header_code).replace("{{MIDDLE_AD}}", middle_code).replace("{{FOOTER_AD}}", footer_code)
+    final_html = final_html.replace("{{MONETAG_ON}}", "true" if monetag_on else "false").replace("{{DIRECT_LINKS}}", str(direct_links))
     return final_html
 
 # ==========================================
-# ৫. এপিআই সেকশন (pagination বাদ দিয়ে সব মুভি একবারে আসবে)
+# ৫. এপিআই সেকশন (নো-পেজিনেশন আপডেট)
 # ==========================================
+
+@app.get("/api/trending")
+async def trending_movies(uid: int = 0):
+    unlock_cfg = await db.settings.find_one({"id": "unlock_config"})
+    u_seconds = unlock_cfg.get('seconds', 86400) if unlock_cfg else 86400
+    unlocked_map = {}
+    if uid != 0:
+        time_limit = datetime.datetime.utcnow() - datetime.timedelta(seconds=u_seconds)
+        async for u in db.user_unlocks.find({"user_id": uid, "unlocked_at": {"$gt": time_limit}}):
+            unlocked_map[u["movie_id"]] = True
+    movies = []
+    async for m in db.movies.find().sort("clicks", -1).limit(10):
+        m_id = str(m["_id"]); m["_id"] = m_id
+        m["is_unlocked"] = m_id in unlocked_map 
+        movies.append(m)
+    return movies
 
 @app.get("/api/list")
 async def list_movies(q: str = "", uid: int = 0):
@@ -719,7 +894,7 @@ async def list_movies(q: str = "", uid: int = 0):
         async for u in db.user_unlocks.find({"user_id": uid, "unlocked_at": {"$gt": time_limit}}):
             unlocked_map[u["movie_id"]] = True
     movies = []
-    # এখানে LIMIT বাদ দেওয়া হয়েছে যাতে সব মুভি একসাথে লোড হয়
+    # এখানে LIMIT ও SKIP বাদ দেওয়া হয়েছে যাতে সব মুভি একসাথে দেখায়
     async for m in db.movies.find(query).sort("created_at", -1):
         m_id = str(m["_id"]); m["_id"] = m_id
         m["is_unlocked"] = m_id in unlocked_map 
@@ -740,19 +915,23 @@ async def get_image(photo_id: str):
 
 @app.post("/api/send")
 async def send_file(d: dict = Body(...)):
-    uid, mid = d['userId'], d['movieId']
+    uid = d['userId']; mid = d['movieId']
     try:
         m = await db.movies.find_one({"_id": ObjectId(mid)})
         if m:
             time_cfg = await db.settings.find_one({"id": "del_time"})
-            del_min = time_cfg['minutes'] if time_cfg else 60
-            sent_msg = await bot.send_video(uid, m['file_id'], caption=f"🎥 {m['title']}\n⏳ {del_min}m পর ডিলিট হবে।", parse_mode="HTML")
+            del_minutes = time_cfg['minutes'] if time_cfg else 60
+            protect_cfg = await db.settings.find_one({"id": "protect_content"})
+            is_protected = protect_cfg['status'] if protect_cfg else True
+            caption = f"🎥 <b>{m['title']}</b>\n\n⏳ মুভিটি <b>{del_minutes} মিনিট</b> পর ডিলিট হবে।"
+            if m.get("file_type") == "video": sent_msg = await bot.send_video(uid, m['file_id'], caption=caption, parse_mode="HTML", protect_content=is_protected)
+            else: sent_msg = await bot.send_document(uid, m['file_id'], caption=caption, parse_mode="HTML", protect_content=is_protected)
             await db.movies.update_one({"_id": ObjectId(mid)}, {"$inc": {"clicks": 1}})
             await db.user_unlocks.update_one({"user_id": uid, "movie_id": mid}, {"$set": {"unlocked_at": datetime.datetime.utcnow()}}, upsert=True)
             if sent_msg:
-                del_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=del_min)
-                await db.auto_delete.insert_one({"chat_id": uid, "message_id": sent_msg.message_id, "delete_at": del_at})
-    except: pass
+                delete_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=del_minutes)
+                await db.auto_delete.insert_one({"chat_id": uid, "message_id": sent_msg.message_id, "delete_at": delete_at})
+    except Exception: pass
     return {"ok": True}
 
 async def start():
