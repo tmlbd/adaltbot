@@ -1,4 +1,4 @@
-import os, asyncio, datetime, uvicorn, random, re, subprocess, json
+import os, asyncio, datetime, uvicorn, random, re, subprocess
 import aiohttp
 from fastapi import FastAPI, Body, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -14,7 +14,7 @@ from PIL import Image # নতুন ইমেজ লাইব্রেরি
 from pyrogram import Client as PyroClient # ২ জিবি ফাইল সাপোর্ট করার জন্য এড করা হলো
 
 # --- কনফিগারেশন ---
-TOKEN = os.getenv("BOT_TOKEN", "8726013622:AAHe9hpP52qVyNtleia2QtnCu7UJc0mJXOI")
+TOKEN = os.getenv("BOT_TOKEN", "8726013622:AAG9-NdAB0KpieehpJwNBmbrs-9DhXGNNqc")
 MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://adalt:adalt@cluster0.5xe9gg4.mongodb.net/?appName=Cluster0")
 OWNER_ID = int(os.getenv("ADMIN_ID", "7525127704")) 
 APP_URL = os.getenv("APP_URL", "https://mere-lotta-akashvaikh-5fce0567.koyeb.app/")
@@ -251,12 +251,9 @@ async def list_ad_links(m: types.Message):
 async def del_ad_link(m: types.Message):
     if m.from_user.id not in admin_cache: return
     try:
-        link_id = m.text.split(" ", 1)[1].strip()
-        res = await db.ad_links.delete_one({"_id": ObjectId(link_id)})
-        if res.deleted_count > 0:
-            await m.answer("✅ লিঙ্কটি ডিলিট করা হয়েছে।")
-        else:
-            await m.answer("❌ কোনো লিঙ্ক পাওয়া যায়নি এই আইডি দিয়ে।")
+        link_id = m.text.split(" ", 1)[1]
+        await db.ad_links.delete_one({"_id": ObjectId(link_id)})
+        await m.answer("✅ লিঙ্কটি ডিলিট করা হয়েছে।")
     except: await m.answer("⚠️ নিয়ম: `/dellink ID` (ID পাবেন /links কমান্ডে)")
 
 # --- নতুন অ্যাড সুইচ কমান্ড ---
@@ -436,7 +433,7 @@ async def protect_cmd(m: types.Message):
             await db.settings.update_one({"id": "protect_content"}, {"$set": {"status": False}}, upsert=True)
             await m.answer("✅ ফরোয়ার্ড প্রোটেকশন <b>বন্ধ (OFF)</b> করা হয়েছে। এখন সবাই মুভি ফরোয়ার্ড করতে পারবে।", parse_mode="HTML")
         else: await m.answer("⚠️ সঠিক নিয়ম: <code>/protect on</code> অথবা <code>/protect off</code>", parse_mode="HTML")
-    except: await m.answer("⚠️ সঠিক নিয়ম: <code>/protect on</code> अथवा <code>/protect off</code>", parse_mode="HTML")
+    except: await m.answer("⚠️ সঠিক নিয়ম: <code>/protect on</code> অথবা <code>/protect off</code>", parse_mode="HTML")
 
 @dp.message(Command("stats"))
 async def stats_cmd(m: types.Message):
@@ -481,9 +478,8 @@ async def set_del_time(m: types.Message):
 async def set_ad(m: types.Message):
     if m.from_user.id in admin_cache:
         try:
-            zone_id = m.text.split(" ")[1]
-            await db.settings.update_one({"id": "ad_config"}, {"$set": {"zone_id": zone_id}}, upsert=True)
-            await m.answer(f"✅ জোন আইডি আপডেট হয়েছে: <code>{zone_id}</code>", parse_mode="HTML")
+            await db.settings.update_one({"id": "ad_config"}, {"$set": {"zone_id": m.text.split(" ")[1]}}, upsert=True)
+            await m.answer("✅ জোন আপডেট হয়েছে।")
         except: await m.answer("⚠️ সঠিক নিয়ম: <code>/setad 1234567</code>", parse_mode="HTML")
 
 @dp.message(Command("settg"))
@@ -608,7 +604,8 @@ async def catch_all_inputs(m: types.Message):
             else:
                 title = admin_temp[uid]["title"]
 
-            # --- Pyrogram দিয়ে ২ জিবি ফাইল ডাউনলোড লজিক ---
+            # --- Pyrogram দিয়ে ২ জিবি ফাইল ডাউনলোড লজিক (নিচে আপডেট করা হলো) ---
+            # ২ জিবি এর ফাইল Bot API দিয়ে ডাউনলোড হয় না, তাই Pyrogram ব্যবহার করা হলো:
             video_path = await pyro_bot.download_media(m.video or m.document)
             grid_path = f"grid_poster_{uid}_{random.randint(100,999)}.jpg"
             
@@ -646,7 +643,7 @@ async def catch_all_inputs(m: types.Message):
             await status_msg.edit_text(f"❌ এরর: {str(e)}")
 
 # ==========================================
-# ৪. ওয়েব অ্যাপ UI এবং APIs (৪ কলাম গ্রিড ও নো-পেজিনেশন আপডেট)
+# ৪. ওয়েব অ্যাপ UI এবং APIs (আপনার আগের কোড)
 # ==========================================
 
 @app.get("/", response_class=HTMLResponse)
@@ -661,6 +658,7 @@ async def web_ui():
     m_ad = await db.settings.find_one({"id": "middle_ad"})
     f_ad = await db.settings.find_one({"id": "footer_ad"})
     
+    # নতুন সেটিংস ফেচ করা
     monetag_cfg = await db.settings.find_one({"id": "monetag_status"})
     adlink_cfg = await db.settings.find_one({"id": "adlink_status"})
     all_links = await db.ad_links.find().to_list(length=100)
@@ -670,7 +668,7 @@ async def web_ui():
     tg_url = tg_cfg['url'] if tg_cfg else "https://t.me/MovieeBD"
     link_18 = b18_cfg['url'] if b18_cfg else "https://t.me/MovieeBD"
     site_name = sn_cfg['name'] if sn_cfg else "MovieZone"
-    notice_text = nt_cfg['text'] if nt_cfg else "মুভি অ্যাপে স্বাগতম!"
+    notice_text = nt_cfg['text'] if nt_cfg else "মুভি অ্যাপে স্বাগতম! মুভি ডাউনলোড করতে এড এর স্টেপ গুলো কমপ্লিট করুন।"
     total_steps = st_cfg['count'] if st_cfg else 2
     header_code = h_ad['code'] if h_ad else ""
     middle_code = m_ad['code'] if m_ad else ""
@@ -689,58 +687,102 @@ async def web_ui():
         <style>
             * { margin:0; padding:0; box-sizing:border-box; }
             body { background:#0f172a; font-family: sans-serif; color:#fff; overflow-x:hidden; } 
+            
+            /* সাইট বক্স/কন্টেইনার */
             .main-container { max-width: 600px; margin: 0 auto; background: #0f172a; min-height: 100vh; }
+            
             header { display:flex; justify-content:space-between; align-items:center; padding:15px; border-bottom:1px solid #1e293b; background:#0f172a; position:sticky; top:0; z-index:1000; }
             .logo { font-size:22px; font-weight:bold; }
             .logo span { background:red; color:#fff; padding:2px 5px; border-radius:5px; margin-left:5px; font-size:16px; }
             .user-info { display:flex; align-items:center; gap:8px; background:#1e293b; padding:5px 12px; border-radius:20px; font-weight:bold; font-size:14px; }
             .user-info img { width:26px; height:26px; border-radius:50%; object-fit:cover; }
+            
+            /* নোটিশ বার */
             .notice-bar { background: linear-gradient(90deg, #f87171, #ef4444); color: white; padding: 10px; font-size: 14px; font-weight: bold; text-align: center; overflow: hidden; white-space: nowrap; }
             .notice-content { display: inline-block; animation: scroll-text 15s linear infinite; }
             @keyframes scroll-text { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+
+            /* ব্যানার অ্যাড স্লট */
             .ad-slot { width: 100%; display: flex; justify-content: center; align-items: center; padding: 10px 0; overflow: hidden; min-height: 50px; background: rgba(30, 41, 59, 0.5); margin: 5px 0; }
+
             .search-box { padding:15px; display: flex; align-items: center; gap: 10px; }
             .back-btn { background: #1e293b; color: white; border: none; padding: 10px 15px; border-radius: 50%; cursor: pointer; display: none; }
             .search-input { flex: 1; padding:14px; border-radius:25px; border:none; outline:none; text-align:center; background:#1e293b; color:#fff; font-size:16px; transition: 0.3s; }
+            .search-input:focus { box-shadow: 0 0 10px rgba(248,113,113,0.5); }
+            
             .section-title { padding: 5px 15px 10px; font-size: 18px; font-weight: bold; color: #f87171; display:flex; align-items:center; gap:8px;}
+            
             .trending-container { display: flex; overflow-x: auto; gap: 12px; padding: 0 15px 20px; scroll-behavior: smooth; }
             .trending-container::-webkit-scrollbar { display: none; }
             .trending-card { min-width: 80%; background: #1e293b; border-radius: 12px; overflow: hidden; cursor: pointer; flex-shrink: 0; position:relative;}
             .trending-card img { height: 180px; object-fit:cover; width:100%; border-radius:10px; display:block; }
+            .trending-card .post-content { padding:3px; background: linear-gradient(45deg, #ff0000, #ff7300, #fffb00); border-radius: 12px; }
             
-            /* ৪ কলাম গ্রিড লেআউট - নতুন পরিবর্তন */
-            .grid { padding:0 10px 120px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-            .card { background:#1e293b; border-radius:8px; overflow:hidden; cursor:pointer; transition: transform 0.2s; border: 1px solid #334155; position: relative;}
+            /* ১ কলাম গ্রিড ও ল্যান্ডস্কেপ কার্ড (Desktop & Mobile) */
+            .grid { padding:0 15px 20px; display: grid; grid-template-columns: 1fr; gap: 20px; }
+            .card { background:#1e293b; border-radius:12px; overflow:hidden; cursor:pointer; transition: transform 0.2s; border: 1px solid #334155; position: relative;}
             .card:active { transform: scale(0.98); }
-            .post-content { position:relative; padding: 2px; border-radius: 8px; background: linear-gradient(45deg, #ff0000, #ff7300, #fffb00); background-size: 400%; animation: glowing 8s linear infinite; }
-            @keyframes glowing { 0% { background-position: 0 0; } 50% { background-position: 400% 0; } 100% { background-position: 0 0; } }
-            .post-content img { width:100%; height:110px; object-fit:cover; display:block; border-radius: 6px; }
             
-            /* গ্রিড ছোট হওয়ায় ব্যাজগুলো ছোট করা হলো */
-            .duration-badge { position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,0.8); color: #fff; padding: 2px 4px; border-radius: 4px; font-size: 8px; font-weight: bold; z-index: 105; }
-            .tag { position:absolute; top:4px; right:4px; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:8px; display:flex; align-items:center; gap:2px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index: 100;}
+            .post-content { 
+                position:relative; padding: 3px; border-radius: 12px;
+                background: linear-gradient(45deg, #ff0000, #ff7300, #fffb00, #48ff00, #00ffd5, #002bff, #7a00ff, #ff00c8, #ff0000);
+                background-size: 400%; animation: glowing 8s linear infinite;
+            }
+            @keyframes glowing { 0% { background-position: 0 0; } 50% { background-position: 400% 0; } 100% { background-position: 0 0; } }
+
+            /* ল্যান্ডস্কেপ ইমেজ হাইট */
+            .post-content img { width:100%; height:200px; object-fit:cover; display:block; border-radius: 10px; }
+            
+            /* ভিডিও ডিউরেশন ব্যাজ */
+            .duration-badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; z-index: 105; border: 1px solid rgba(255,255,255,0.2); }
+
+            .tag { position:absolute; top:8px; right:8px; padding:4px 6px; border-radius:6px; font-weight:bold; font-size:10px; display:flex; align-items:center; gap:4px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index: 100;}
             .tag-locked { background:rgba(0,0,0,0.85); color:#f87171; border: 1px solid #f87171; }
             .tag-unlocked { background:rgba(0,0,0,0.85); color:#10b981; border: 1px solid #10b981; }
-            .unlock-timer { position: absolute; top: 4px; right: 4px; background: rgba(16, 185, 129, 0.9); color: white; padding: 2px 4px; border-radius: 4px; font-size: 8px; font-weight: bold; z-index: 101; display: none; }
-            .view-badge { position:absolute; bottom:4px; left:4px; background:rgba(0,0,0,0.7); color:#fff; padding:2px 4px; border-radius:4px; font-size:8px; font-weight:bold; display:flex; align-items:center; gap:2px; }
-            .card-footer { padding:5px; font-size:9px; font-weight:bold; text-align:center; word-wrap: break-word; color:#e2e8f0; line-height:1.2; height: 34px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+            
+            /* পোস্টারের উপরে স্টেপ ওভারলে */
+            .step-overlay { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: #f87171; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: bold; border: 1px solid #f87171; z-index: 100; display:none; }
+            
+            /* আনলক টাইমার ওভারলে */
+            .unlock-timer { position: absolute; top: 10px; right: 10px; background: rgba(16, 185, 129, 0.9); color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: bold; z-index: 101; display: none; }
 
+            .top-badge { position:absolute; top:8px; left:8px; background:red; color:white; padding:3px 6px; border-radius:6px; font-size:10px; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10; display:none;}
+            .view-badge { position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.7); color:#fff; padding:3px 6px; border-radius:6px; font-size:11px; font-weight:bold; display:flex; align-items:center; gap:4px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+
+            .card-footer { padding:12px; font-size:16px; font-weight:bold; text-align:center; word-wrap: break-word; color:#e2e8f0; line-height:1.4; }
+            
             .skeleton { background: #1e293b; border-radius: 12px; height: 180px; overflow: hidden; position: relative; }
             .skeleton::after { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent); animation: shimmer 1.5s infinite; }
             @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+            .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 10px 15px 120px; flex-wrap: wrap; }
+            .page-btn { background: #1e293b; color: #fff; border: 1px solid #334155; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; outline: none; }
+            .page-btn.active { background: #f87171; border-color: #f87171; color: white; }
+            .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
             .floating-btn { position:fixed; right:20px; color:white; width:50px; height:50px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:bold; z-index:500; cursor:pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
             .btn-18 { bottom:155px; background:red; border:2px solid #fff; }
             .btn-tg { bottom:95px; background:#24A1DE; }
             .btn-req { bottom:35px; background:#10b981; }
 
+            /* অ্যাড স্ক্রিন নতুন ডিজাইন (ক্লিক সিস্টেমের জন্য আপডেট করা) */
             .ad-screen { position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; display:none; flex-direction:column; align-items:center; justify-content:center; z-index:2000; padding: 20px; }
             .screen-back { position: absolute; top: 20px; left: 20px; background: #1e293b; color: #f87171; padding: 10px 15px; border-radius: 20px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 5px; border: 1px solid #f87171; }
+            
+            .ad-poster-img { width: 100%; max-width: 300px; height: 180px; object-fit: cover; border-radius: 15px; margin-bottom: 20px; border: 2px solid #f87171; }
+            .progress-container { width: 100%; max-width: 300px; background: #1e293b; height: 10px; border-radius: 5px; margin-bottom: 10px; overflow: hidden; }
+            .progress-bar { height: 100%; background: #f87171; width: 0%; transition: width 0.3s; }
+            .step-text { font-size: 18px; font-weight: bold; color: #f87171; margin-bottom: 5px; }
+            .percent-text { font-size: 14px; color: #94a3b8; margin-bottom: 15px; }
             .timer { width:80px; height:80px; border-radius:50%; border:5px solid red; display:flex; align-items:center; justify-content:center; font-size:30px; margin-bottom:20px; color:red; font-weight:bold; }
+            
+            /* নতুন বাটন ডিজাইন */
             .btn-visit { background:#f87171; color:white; border:none; padding:15px 30px; border-radius:30px; font-size:18px; font-weight:bold; cursor:pointer; width:80%; text-align:center; text-decoration:none; display:block; margin-top:10px;}
             .btn-next { background:#10b981; color:white; border:none; padding:15px 30px; border-radius:30px; font-size:18px; font-weight:bold; cursor:pointer; display:none; width:80%; margin-top:10px; }
+
             .modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:none; align-items:center; justify-content:center; z-index:3000; }
             .modal-content { background:#1e293b; width:90%; padding:30px; border-radius:15px; text-align:center; }
+            .req-input { width: 100%; padding: 12px; margin: 15px 0; border-radius: 8px; border: none; background: #0f172a; color: white; outline:none; }
             .btn-submit { background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; width:100%; font-size:16px;}
         </style>
     </head>
@@ -750,35 +792,70 @@ async def web_ui():
                 <div class="logo">{{SITE_NAME}} <span>BD</span></div>
                 <div class="user-info"><span id="uName">Guest</span><img id="uPic" src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png"></div>
             </header>
-            <div class="notice-bar"><div class="notice-content">{{NOTICE_TEXT}}</div></div>
+
+            <div class="notice-bar">
+                <div class="notice-content">{{NOTICE_TEXT}}</div>
+            </div>
+
             <div class="ad-slot">{{HEADER_AD}}</div>
+
             <div class="search-box">
                 <button class="back-btn" id="searchBack" onclick="clearSearch()"><i class="fa-solid fa-arrow-left"></i></button>
-                <input type="text" id="searchInput" class="search-input" placeholder="মুভি খুঁজুন...">
+                <input type="text" id="searchInput" class="search-input" placeholder="মুভি বা ওয়েব সিরিজ খুঁজুন...">
             </div>
+
             <div class="ad-slot">{{MIDDLE_AD}}</div>
+
             <div id="trendingWrapper">
                 <div class="section-title"><i class="fa-solid fa-fire"></i> ট্রেন্ডিং মুভি</div>
-                <div class="trending-container" id="trendingGrid"></div>
+                <div class="trending-container" id="trendingGrid">
+                    <div class="skeleton" style="min-width:80%; height:180px;"></div>
+                </div>
             </div>
-            <div class="section-title"><i class="fa-solid fa-film"></i> সব মুভি</div>
+
+            <div class="section-title"><i class="fa-solid fa-film"></i> নতুন সব মুভি</div>
             <div class="grid" id="movieGrid"></div>
+            
             <div class="ad-slot">{{FOOTER_AD}}</div>
+
+            <div class="pagination" id="paginationBox"></div>
         </div>
 
         <div id="adScreen" class="ad-screen">
             <div class="screen-back" onclick="closeAdScreen()"><i class="fa-solid fa-arrow-left"></i> ফিরে যান</div>
-            <img id="adMoviePoster" style="width:100%; max-width:300px; height:180px; object-fit:cover; border-radius:15px; margin-bottom:20px; border:2px solid #f87171;">
-            <div class="step-text" id="stepLabel" style="font-size:18px; font-weight:bold; color:#f87171; margin-bottom:10px;">Step 1/2</div>
+            <img id="adMoviePoster" class="ad-poster-img" src="">
+            <div class="step-text" id="stepLabel">Step 1/2</div>
+            <div class="percent-text" id="percentLabel">0% Completed</div>
+            <div id="adsRemaining" style="font-size: 14px; color: #f87171; margin-bottom: 10px; font-weight: bold;"></div>
+            <div class="progress-container"><div class="progress-bar" id="progressBar"></div></div>
             <div class="timer" id="timer">0</div>
+            <p id="adMsg" style="text-align:center; margin-bottom:15px;">নিচের বাটনে ক্লিক করে অ্যাড দেখুন এবং মুভি আনলক করুন।</p>
+            
             <a href="#" target="_blank" class="btn-visit" id="btnVisit" onclick="startTimer()">Visit Ad & Unlock</a>
             <button class="btn-next" id="btnNext" onclick="handleNextStep()">Next Step <i class="fa-solid fa-arrow-right"></i></button>
         </div>
 
-        <div id="successModal" class="modal"><div class="modal-content"><h2 style="color:#10b981;">সফল হয়েছে!</h2><p style="color:gray; margin:15px 0;">বট চেক করুন। মুভি পাঠানো হয়েছে।</p><button class="btn-submit" onclick="tg.close()">বটে ফিরে যান</button></div></div>
+        <div id="successModal" class="modal">
+            <div class="modal-content">
+                <i class="fa-solid fa-circle-check" style="font-size:60px; color:#10b981;"></i>
+                <h2 style="margin:15px 0;">সম্পন্ন হয়েছে!</h2>
+                <p style="margin-bottom: 20px; color:gray; font-size:14px;">বটের ইনবক্স চেক করুন। <br><span style="color:#f87171;">সতর্কতা: মুভিটি কিছুক্ষণ পর অটোমেটিক ডিলিট হয়ে যাবে।</span></p>
+                <button class="btn-submit" onclick="tg.close()">বটে ফিরে যান</button>
+            </div>
+        </div>
+
+        <div id="reqModal" class="modal">
+            <div class="modal-content">
+                <h2>মুভি রিকোয়েস্ট করুন</h2>
+                <input type="text" id="reqText" class="req-input" placeholder="মুভির নাম ও রিলিজ সাল লিখুন...">
+                <button class="btn-submit" onclick="sendReq()">সাবমিট করুন</button>
+                <p style="margin-top:15px; color:gray; cursor:pointer;" onclick="document.getElementById('reqModal').style.display='none'">বাতিল করুন</p>
+            </div>
+        </div>
 
         <div class="floating-btn btn-18" onclick="window.open('{{LINK_18}}')">18+</div>
         <div class="floating-btn btn-tg" onclick="window.open('{{TG_LINK}}')"><i class="fa-brands fa-telegram"></i></div>
+        <div class="floating-btn btn-req" onclick="openReqModal()"><i class="fa-solid fa-code-pull-request"></i></div>
 
         <script>
             let tg = window.Telegram.WebApp; tg.expand();
@@ -787,131 +864,397 @@ async def web_ui():
             const ADLINK_ON = {{ADLINK_ON}};
             const DIRECT_LINKS = {{DIRECT_LINKS}};
             const TOTAL_STEPS = {{TOTAL_STEPS}};
+            
+            let currentPage = 1; let isLoading = false; let searchQuery = "";
             let uid = tg.initDataUnsafe.user?.id || 0;
-            let searchQuery = ""; let currentAdStep = 1; let currentMovieId = "";
+            let currentAdStep = 1;
+            let currentMovieId = "";
+
+            // ইংলিশ ভয়েস ফাংশন
+            function playVoice(text) {
+                const msg = new SpeechSynthesisUtterance();
+                msg.text = text;
+                msg.lang = 'en-US';
+                window.speechSynthesis.speak(msg);
+            }
 
             if(tg.initDataUnsafe && tg.initDataUnsafe.user) {
                 document.getElementById('uName').innerText = tg.initDataUnsafe.user.first_name;
+                if(tg.initDataUnsafe.user.photo_url) document.getElementById('uPic').src = tg.initDataUnsafe.user.photo_url;
+            }
+
+            // Monetag লোড (যদি ON থাকে)
+            if(MONETAG_ON) {
+                const s = document.createElement('script');
+                s.src = '//libtl.com/sdk.js'; s.setAttribute('data-zone', ZONE_ID); s.setAttribute('data-sdk', 'show_' + ZONE_ID);
+                document.head.appendChild(s);
+            }
+
+            function drawSkeletons(count) {
+                let html = ""; for(let i=0; i<count; i++) html += `<div class="skeleton"></div>`; return html;
+            }
+
+            function startAutoScroll() {
+                setInterval(() => {
+                    let grid = document.getElementById('trendingGrid');
+                    if(grid) {
+                        let cardWidth = 300;
+                        if (grid.scrollLeft >= (grid.scrollWidth - grid.clientWidth - 10)) {
+                            grid.scrollTo({ left: 0, behavior: 'smooth' });
+                        } else {
+                            grid.scrollBy({ left: cardWidth, behavior: 'smooth' });
+                        }
+                    }
+                }, 3000);
+            }
+
+            function formatTime(seconds) {
+                const h = Math.floor(seconds / 3600);
+                const m = Math.floor((seconds % 3600) / 60);
+                const s = Math.floor(seconds % 60);
+                let res = "";
+                if(h > 0) res += h + "h ";
+                if(m > 0) res += m + "m ";
+                if(s > 0 || res==="") res += s + "s";
+                return res;
+            }
+
+            function startLiveCountdown(elementId, seconds) {
+                let timeLeft = seconds;
+                const element = document.getElementById(elementId);
+                if (!element) return;
+                
+                const interval = setInterval(() => {
+                    timeLeft--;
+                    if (timeLeft <= 0) {
+                        element.style.display = 'none';
+                        clearInterval(interval);
+                        loadMovies(currentPage);
+                    } else {
+                        element.innerText = formatTime(timeLeft);
+                        element.style.display = 'block';
+                    }
+                }, 1000);
             }
 
             async function loadTrending() {
-                const r = await fetch(`/api/trending?uid=${uid}`);
-                const data = await r.json();
-                const grid = document.getElementById('trendingGrid');
-                grid.innerHTML = data.map(m => `
-                    <div class="trending-card" onclick="handleMovieClick('${m._id}', ${m.is_unlocked}, '${m.photo_id}')">
-                        <div class="post-content">
-                            <div class="duration-badge">${m.duration || '0m'}</div>
-                            <img src="/api/image/${m.photo_id}">
-                            <div class="tag ${m.is_unlocked ? 'tag-unlocked' : 'tag-locked'}">${m.is_unlocked ? '🔓' : '🔒'}</div>
-                            <div class="view-badge">👁 ${m.clicks}</div>
-                        </div>
-                        <div class="card-footer">${m.title}</div>
-                    </div>`).join('');
+                try {
+                    const r = await fetch(`/api/trending?uid=${uid}`);
+                    const data = await r.json();
+                    const grid = document.getElementById('trendingGrid');
+                    if(data.length === 0) {
+                        document.getElementById('trendingWrapper').style.display = 'none';
+                        return;
+                    }
+                    grid.innerHTML = data.map(m => {
+                        let tagHtml = m.is_unlocked ? `<div class="tag tag-unlocked"><i class="fa-solid fa-unlock"></i></div>` : `<div class="tag tag-locked"><i class="fa-solid fa-lock"></i></div>`;
+                        let timerHtml = m.is_unlocked ? `<div class="unlock-timer" id="trend_timer_${m._id}"></div>` : `<div class="step-overlay">Steps: 0/${TOTAL_STEPS}</div>`;
+                        
+                        const html = `
+                        <div class="trending-card" onclick="handleMovieClick('${m._id}', ${m.is_unlocked}, '${m.photo_id}')">
+                            <div class="post-content">
+                                <div class="duration-badge">${m.duration || '0m'}</div>
+                                <div class="top-badge">🔥 TOP</div>
+                                ${timerHtml}
+                                <img src="/api/image/${m.photo_id}" onerror="this.src='https://via.placeholder.com/400x200?text=No+Image'">
+                                ${tagHtml}
+                                <div class="view-badge"><i class="fa-solid fa-eye"></i> ${m.clicks}</div>
+                            </div>
+                            <div class="card-footer" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${m.title}</div>
+                        </div>`;
+                        
+                        return html;
+                    }).join('');
+                    
+                    data.forEach(m => {
+                        if(m.is_unlocked && m.rem_sec > 0) startLiveCountdown(`trend_timer_${m._id}`, m.rem_sec);
+                    });
+
+                    setTimeout(startAutoScroll, 2000);
+                } catch(e) {}
             }
 
-            async function loadMovies() {
-                const r = await fetch(`/api/list?q=${searchQuery}&uid=${uid}`);
-                const data = await r.json();
+            async function loadMovies(page = 1) {
+                if(isLoading) return;
+                isLoading = true;
+                currentPage = page;
                 const grid = document.getElementById('movieGrid');
-                grid.innerHTML = data.movies.map(m => `
-                    <div class="card" onclick="handleMovieClick('${m._id}', ${m.is_unlocked}, '${m.photo_id}')">
-                        <div class="post-content">
-                            <div class="duration-badge">${m.duration || '0m'}</div>
-                            <img src="/api/image/${m.photo_id}">
-                            <div class="tag ${m.is_unlocked ? 'tag-unlocked' : 'tag-locked'}">${m.is_unlocked ? '🔓' : '🔒'}</div>
-                            <div class="view-badge">👁 ${m.clicks}</div>
-                        </div>
-                        <div class="card-footer">${m.title}</div>
-                    </div>`).join('');
+                const pBox = document.getElementById('paginationBox');
+                grid.innerHTML = drawSkeletons(10);
+                pBox.innerHTML = "";
+
+                try {
+                    const r = await fetch(`/api/list?page=${currentPage}&q=${searchQuery}&uid=${uid}`);
+                    const data = await r.json();
+                    if(data.movies.length === 0) {
+                        grid.innerHTML = "<p style='grid-column: span 1; text-align:center; color:gray; padding:20px;'>কোনো মুভি পাওয়া যায়নি!</p>";
+                    } else {
+                        grid.innerHTML = data.movies.map(m => {
+                            let tagHtml = m.is_unlocked ? `<div class="tag tag-unlocked"><i class="fa-solid fa-unlock"></i></div>` : `<div class="tag tag-locked"><i class="fa-solid fa-lock"></i></div>`;
+                            let timerHtml = m.is_unlocked ? `<div class="unlock-timer" id="list_timer_${m._id}"></div>` : `<div class="step-overlay">Steps: 0/${TOTAL_STEPS}</div>`;
+                            
+                            return `
+                            <div class="card" onclick="handleMovieClick('${m._id}', ${m.is_unlocked}, '${m.photo_id}')">
+                                <div class="post-content">
+                                    <div class="duration-badge">${m.duration || '0m'}</div>
+                                    ${timerHtml}
+                                    <img src="/api/image/${m.photo_id}" onerror="this.src='https://via.placeholder.com/400x200?text=No+Image'">
+                                    ${tagHtml}
+                                    <div class="view-badge"><i class="fa-solid fa-eye"></i> ${m.clicks}</div>
+                                </div>
+                                <div class="card-footer">${m.title}</div>
+                            </div>`;
+                        }).join('');
+                        
+                        data.movies.forEach(m => {
+                            if(m.is_unlocked && m.rem_sec > 0) startLiveCountdown(`list_timer_${m._id}`, m.rem_sec);
+                        });
+                        
+                        renderPagination(data.total_pages);
+                    }
+                } catch(e) {}
+                isLoading = false;
             }
 
-            document.getElementById('searchInput').addEventListener('input', e => { searchQuery = e.target.value; loadMovies(); });
+            function renderPagination(totalPages) {
+                if (totalPages <= 1) return;
+                let html = "";
+                html += `<button class="page-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="goToPage(${currentPage - 1})"><i class="fa-solid fa-angle-left"></i></button>`;
+                let start = Math.max(1, currentPage - 1);
+                let end = Math.min(totalPages, currentPage + 1);
+                for (let i = start; i <= end; i++) { html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`; }
+                html += `<button class="page-btn" ${currentPage === totalPages ? 'disabled' : ''} onclick="goToPage(${currentPage + 1})"><i class="fa-solid fa-angle-right"></i></button>`;
+                document.getElementById('paginationBox').innerHTML = html;
+            }
+
+            function goToPage(p) {
+                if (p < 1) return;
+                loadMovies(p);
+                window.scrollTo({ top: document.getElementById('movieGrid').offsetTop - 100, behavior: 'smooth' });
+            }
+
+            let timeout = null;
+            document.getElementById('searchInput').addEventListener('input', function(e) {
+                clearTimeout(timeout); searchQuery = e.target.value.trim();
+                if(searchQuery !== "") {
+                    document.getElementById('trendingWrapper').style.display = 'none';
+                    document.getElementById('searchBack').style.display = 'block';
+                }
+                else { 
+                    clearSearch();
+                }
+                timeout = setTimeout(() => { loadMovies(1); }, 500); 
+            });
+
+            function clearSearch() {
+                searchQuery = "";
+                document.getElementById('searchInput').value = "";
+                document.getElementById('searchBack').style.display = 'none';
+                document.getElementById('trendingWrapper').style.display = 'block';
+                loadTrending();
+                loadMovies(1);
+            }
 
             function handleMovieClick(id, isUnlocked, photoId) {
-                if(isUnlocked) sendFile(id);
-                else { currentMovieId = id; currentAdStep = 1; document.getElementById('adMoviePoster').src = `/api/image/${photoId}`; document.getElementById('adScreen').style.display = 'flex'; showAdScreen(); }
+                if(isUnlocked) {
+                    sendFile(id);
+                } else {
+                    currentMovieId = id;
+                    currentAdStep = 1;
+                    document.getElementById('adMoviePoster').src = `/api/image/${photoId}`;
+                    showAdScreen();
+                }
             }
 
             function showAdScreen() {
+                document.getElementById('adScreen').style.display = 'flex';
                 document.getElementById('stepLabel').innerText = `Step ${currentAdStep}/${TOTAL_STEPS}`;
-                document.getElementById('btnVisit').style.display = 'block'; document.getElementById('btnNext').style.display = 'none'; document.getElementById('timer').innerText = "15";
+                let progress = Math.round(((currentAdStep - 1) / TOTAL_STEPS) * 100);
+                document.getElementById('percentLabel').innerText = `${progress}% Completed`;
+                document.getElementById('progressBar').style.width = `${progress}%`;
                 
-                let adUrl = "#";
-                if(ADLINK_ON && DIRECT_LINKS.length > 0) {
-                    adUrl = DIRECT_LINKS[Math.floor(Math.random() * DIRECT_LINKS.length)];
-                } else if(MONETAG_ON) {
-                    adUrl = `https://pukmousa.com/4/8802271?var=${ZONE_ID}`;
+                let remaining = TOTAL_STEPS - currentAdStep + 1;
+                document.getElementById('adsRemaining').innerText = `বাকি আছে: ${remaining}টি অ্যাড`;
+                
+                document.getElementById('btnVisit').style.display = 'block';
+                document.getElementById('btnVisit').style.pointerEvents = 'auto';
+                document.getElementById('btnVisit').style.opacity = '1';
+                document.getElementById('btnNext').style.display = 'none';
+                document.getElementById('timer').innerText = "15";
+                
+                let useMonetag = (MONETAG_ON && (currentAdStep % 2 === 0 || !ADLINK_ON));
+                window.currentUseMonetag = useMonetag;
+
+                if(useMonetag) {
+                    document.getElementById('adMsg').innerText = "নিচের আনলক বাটনে ক্লিক করুন এবং অ্যাড লোড হওয়া পর্যন্ত অপেক্ষা করুন।";
+                    document.getElementById('btnVisit').innerText = "Unlock Movie (Click)";
+                    document.getElementById('btnVisit').href = "javascript:void(0)";
+                } else {
+                    document.getElementById('adMsg').innerText = "নিচের বাটনে ক্লিক করে অ্যাড ভিজিট করুন এবং ১৫ সেকেন্ড অপেক্ষা করুন।";
+                    document.getElementById('btnVisit').innerText = "Visit Ad & Unlock";
+                    let linkToOpen = DIRECT_LINKS[Math.floor(Math.random() * DIRECT_LINKS.length)] || "#";
+                    document.getElementById('btnVisit').href = linkToOpen;
                 }
-                document.getElementById('btnVisit').href = adUrl;
             }
 
             function startTimer() {
-                let t = 15; document.getElementById('btnVisit').style.pointerEvents = 'none';
+                if(window.currentUseMonetag && MONETAG_ON && typeof window['show_' + ZONE_ID] === 'function') {
+                    window['show_' + ZONE_ID]();
+                }
+
+                let t = 15;
+                document.getElementById('btnVisit').style.pointerEvents = 'none';
+                document.getElementById('btnVisit').style.opacity = '0.5';
+                document.getElementById('adMsg').innerText = "অ্যাড দেখা হচ্ছে, দয়া করে কিছুক্ষণ অপেক্ষা করুন...";
+                
                 let iv = setInterval(() => {
-                    t--; document.getElementById('timer').innerText = t;
-                    if(t <= 0) { clearInterval(iv); document.getElementById('btnVisit').style.display = 'none'; document.getElementById('btnNext').style.display = 'block'; document.getElementById('btnVisit').style.pointerEvents = 'auto';}
+                    t--;
+                    document.getElementById('timer').innerText = t;
+                    if(t <= 0) {
+                        clearInterval(iv);
+                        document.getElementById('btnVisit').style.display = 'none';
+                        document.getElementById('btnNext').style.display = 'block';
+                        document.getElementById('adMsg').innerText = "এই ধাপটি সফলভাবে সম্পন্ন হয়েছে! Next বাটনে ক্লিক করুন।";
+                        playVoice("Verification complete, please click next step.");
+                    }
                 }, 1000);
             }
 
             function handleNextStep() {
-                if(currentAdStep < TOTAL_STEPS) { currentAdStep++; showAdScreen(); }
-                else sendFile(currentMovieId);
-            }
-
-            async function sendFile(id) {
-                await fetch('/api/send', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({userId: uid, movieId: id})});
-                document.getElementById('adScreen').style.display = 'none'; document.getElementById('successModal').style.display = 'flex';
+                if(currentAdStep < TOTAL_STEPS) {
+                    currentAdStep++;
+                    showAdScreen();
+                } else {
+                    document.getElementById('progressBar').style.width = `100%`;
+                    document.getElementById('percentLabel').innerText = `100% Completed`;
+                    sendFile(currentMovieId);
+                }
             }
 
             function closeAdScreen() { document.getElementById('adScreen').style.display = 'none'; }
-            loadTrending(); loadMovies();
+
+            async function sendFile(id) {
+                await fetch('/api/send', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({userId: uid, movieId: id})});
+                document.getElementById('adScreen').style.display = 'none';
+                document.getElementById('successModal').style.display = 'flex';
+                playVoice("Movie sent to your inbox, check it now.");
+                setTimeout(() => { loadTrending(); loadMovies(currentPage); }, 1000); 
+            }
+
+            function openReqModal() { document.getElementById('reqModal').style.display = 'flex'; }
+            
+            async function sendReq() {
+                const text = document.getElementById('reqText').value;
+                if(!text) return alert('মুভির নাম লিখুন!');
+                await fetch('/api/request', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid: uid, uname: tg.initDataUnsafe.user?.first_name || 'Guest', movie: text})});
+                document.getElementById('reqModal').style.display = 'none';
+                document.getElementById('reqText').value = '';
+                alert('রিকোয়েস্ট সফলভাবে পাঠানো হয়েছে!');
+            }
+
+            loadTrending();
+            loadMovies(1); 
         </script>
     </body>
     </html>
     """
-    final_html = html_code.replace("{{ZONE_ID}}", str(zone_id)).replace("{{TG_LINK}}", tg_url).replace("{{LINK_18}}", link_18).replace("{{SITE_NAME}}", site_name)
-    final_html = final_html.replace("{{NOTICE_TEXT}}", notice_text).replace("{{TOTAL_STEPS}}", str(total_steps)).replace("{{HEADER_AD}}", header_code).replace("{{MIDDLE_AD}}", middle_code).replace("{{FOOTER_AD}}", footer_code)
-    final_html = final_html.replace("{{MONETAG_ON}}", "true" if monetag_on else "false").replace("{{ADLINK_ON}}", "true" if adlink_on else "false").replace("{{DIRECT_LINKS}}", json.dumps(direct_links))
+    final_html = html_code.replace("{{ZONE_ID}}", zone_id).replace("{{TG_LINK}}", tg_url).replace("{{LINK_18}}", link_18).replace("{{SITE_NAME}}", site_name)
+    final_html = final_html.replace("{{NOTICE_TEXT}}", notice_text).replace("{{TOTAL_STEPS}}", str(total_steps))
+    final_html = final_html.replace("{{HEADER_AD}}", header_code).replace("{{MIDDLE_AD}}", middle_code).replace("{{FOOTER_AD}}", footer_code)
+    
+    # নতুন সুইচ এবং লিঙ্কের ভ্যালু রিপ্লেস
+    final_html = final_html.replace("{{MONETAG_ON}}", "true" if monetag_on else "false")
+    final_html = final_html.replace("{{ADLINK_ON}}", "true" if adlink_on else "false")
+    final_html = final_html.replace("{{DIRECT_LINKS}}", str(direct_links))
+    
     return final_html
 
 # ==========================================
-# ৫. এপিআই সেকশন (নো-পেজিনেশন আপডেট)
+# ৫. এপিআই সেকশন (আপনার আগের কোড)
 # ==========================================
+
+# নতুন টাইম পার্সার ফাংশন
+def parse_duration(time_str):
+    total_seconds = 0
+    hours = re.search(r'(\d+)h', time_str)
+    minutes = re.search(r'(\d+)m', time_str)
+    seconds = re.search(r'(\d+)s', time_str)
+    if hours: total_seconds += int(hours.group(1)) * 3600
+    if minutes: total_seconds += int(minutes.group(1)) * 60
+    if seconds: total_seconds += int(seconds.group(1))
+    if not any([hours, minutes, seconds]) and time_str.isdigit():
+        total_seconds = int(time_str) * 3600
+    return total_seconds if total_seconds > 0 else 86400
+
+import re
 
 @app.get("/api/trending")
 async def trending_movies(uid: int = 0):
     unlock_cfg = await db.settings.find_one({"id": "unlock_config"})
-    u_seconds = unlock_cfg.get('seconds', 86400) if unlock_cfg else 86400
+    if unlock_cfg:
+        if 'seconds' in unlock_cfg: u_seconds = unlock_cfg['seconds']
+        else: u_seconds = unlock_cfg.get('hours', 24) * 3600
+    else: u_seconds = 86400
+
     unlocked_map = {}
     if uid != 0:
         time_limit = datetime.datetime.utcnow() - datetime.timedelta(seconds=u_seconds)
         async for u in db.user_unlocks.find({"user_id": uid, "unlocked_at": {"$gt": time_limit}}):
-            unlocked_map[u["movie_id"]] = True
+            expires_at = u["unlocked_at"] + datetime.timedelta(seconds=u_seconds)
+            unlocked_map[u["movie_id"]] = int((expires_at - datetime.datetime.utcnow()).total_seconds())
+
     movies = []
     async for m in db.movies.find().sort("clicks", -1).limit(10):
-        m_id = str(m["_id"]); m["_id"] = m_id
+        m_id = str(m["_id"])
+        m["_id"] = m_id
+        m["clicks"] = m.get("clicks", 0)
+        m["duration"] = m.get("duration", "0m")
         m["is_unlocked"] = m_id in unlocked_map 
+        m["rem_sec"] = unlocked_map.get(m_id, 0)
         movies.append(m)
     return movies
 
 @app.get("/api/list")
-async def list_movies(q: str = "", uid: int = 0):
+async def list_movies(page: int = 1, q: str = "", uid: int = 0):
+    limit = 1000
+    skip = (page - 1) * limit
     query = {"title": {"$regex": q, "$options": "i"}} if q else {}
+    
     unlock_cfg = await db.settings.find_one({"id": "unlock_config"})
-    u_seconds = unlock_cfg.get('seconds', 86400) if unlock_cfg else 86400
+    if unlock_cfg:
+        if 'seconds' in unlock_cfg: u_seconds = unlock_cfg['seconds']
+        else: u_seconds = unlock_cfg.get('hours', 24) * 3600
+    else: u_seconds = 86400
+
     unlocked_map = {}
     if uid != 0:
         time_limit = datetime.datetime.utcnow() - datetime.timedelta(seconds=u_seconds)
         async for u in db.user_unlocks.find({"user_id": uid, "unlocked_at": {"$gt": time_limit}}):
-            unlocked_map[u["movie_id"]] = True
+            expires_at = u["unlocked_at"] + datetime.timedelta(seconds=u_seconds)
+            unlocked_map[u["movie_id"]] = int((expires_at - datetime.datetime.utcnow()).total_seconds())
+
     movies = []
-    # এখানে LIMIT ও SKIP বাদ দেওয়া হয়েছে যাতে সব মুভি একসাথে দেখায়
-    async for m in db.movies.find(query).sort("created_at", -1):
-        m_id = str(m["_id"]); m["_id"] = m_id
+    async for m in db.movies.find(query).sort("created_at", -1).skip(skip).limit(limit):
+        m_id = str(m["_id"])
+        m["_id"] = m_id
+        m["clicks"] = m.get("clicks", 0)
+        m["duration"] = m.get("duration", "0m")
         m["is_unlocked"] = m_id in unlocked_map 
+        m["rem_sec"] = unlocked_map.get(m_id, 0)
         movies.append(m)
+        
     return {"movies": movies}
+
+# কমান্ড প্রসেসিং এ টাইম আপডেট করার জন্য
+@dp.message(Command("setunlocktime"))
+async def set_unlock_time_cmd(m: types.Message):
+    if m.from_user.id not in admin_cache: return
+    try:
+        raw_val = m.text.split(" ", 1)[1]
+        seconds = parse_duration(raw_val)
+        await db.settings.update_one({"id": "unlock_config"}, {"$set": {"seconds": seconds, "raw": raw_val}}, upsert=True)
+        await m.answer(f"✅ মুভি আনলক থাকার সময় সেট করা হয়েছে: <b>{raw_val}</b>", parse_mode="HTML")
+    except: await m.answer("⚠️ নিয়ম: `/setunlocktime 1h,10m,30s`", parse_mode="HTML")
 
 @app.get("/api/image/{photo_id}")
 async def get_image(photo_id: str):
@@ -927,31 +1270,62 @@ async def get_image(photo_id: str):
 
 @app.post("/api/send")
 async def send_file(d: dict = Body(...)):
-    uid = d['userId']; mid = d['movieId']
+    uid = d['userId']
+    mid = d['movieId']
+    if uid == 0: return {"ok": False}
     try:
         m = await db.movies.find_one({"_id": ObjectId(mid)})
         if m:
             time_cfg = await db.settings.find_one({"id": "del_time"})
             del_minutes = time_cfg['minutes'] if time_cfg else 60
+            
             protect_cfg = await db.settings.find_one({"id": "protect_content"})
             is_protected = protect_cfg['status'] if protect_cfg else True
-            caption = f"🎥 <b>{m['title']}</b>\n\n⏳ মুভিটি <b>{del_minutes} মিনিট</b> পর ডিলিট হবে।"
-            if m.get("file_type") == "video": sent_msg = await bot.send_video(uid, m['file_id'], caption=caption, parse_mode="HTML", protect_content=is_protected)
-            else: sent_msg = await bot.send_document(uid, m['file_id'], caption=caption, parse_mode="HTML", protect_content=is_protected)
+            
+            caption = f"🎥 <b>{m['title']}</b>\n\n⏳ <b>সতর্কতা:</b> কপিরাইট এড়াতে মুভিটি <b>{del_minutes} মিনিট</b> পর অটো-ডিলিট হয়ে যাবে। দয়া করে এখনই ফরওয়ার্ড বা সেভ করে নিন!\n\n📥 Join: @PronoHub_1"
+            
+            sent_msg = None
+            if m.get("file_type") == "video": 
+                sent_msg = await bot.send_video(uid, m['file_id'], caption=caption, parse_mode="HTML", protect_content=is_protected)
+            else: 
+                sent_msg = await bot.send_document(uid, m['file_id'], caption=caption, parse_mode="HTML", protect_content=is_protected)
+            
             await db.movies.update_one({"_id": ObjectId(mid)}, {"$inc": {"clicks": 1}})
             await db.user_unlocks.update_one({"user_id": uid, "movie_id": mid}, {"$set": {"unlocked_at": datetime.datetime.utcnow()}}, upsert=True)
+            
             if sent_msg:
                 delete_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=del_minutes)
                 await db.auto_delete.insert_one({"chat_id": uid, "message_id": sent_msg.message_id, "delete_at": delete_at})
     except Exception: pass
     return {"ok": True}
 
+class ReqModel(BaseModel):
+    uid: int; uname: str; movie: str
+
+@app.post("/api/request")
+async def handle_request(data: ReqModel):
+    try: 
+        builder = InlineKeyboardBuilder()
+        builder.button(text="✍️ রিপ্লাই দিন", callback_data=f"reply_{data.uid}")
+        
+        await bot.send_message(
+            OWNER_ID, 
+            f"🔔 <b>নতুন মুভি রিকোয়েস্ট!</b>\n\n👤 ইউজার: {data.uname} (<code>{data.uid}</code>)\n🎬 মুভির নাম: <b>{data.movie}</b>", 
+            parse_mode="HTML", 
+            reply_markup=builder.as_markup()
+        )
+    except: pass
+    return {"ok": True}
+
 async def start():
-    await load_admins(); await pyro_bot.start()
+    await load_admins()
+    await pyro_bot.start() # Pyrogram ক্লায়েন্ট স্টার্ট করা হলো (২ জিবি ফাইল সাপোর্ট করার জন্য)
     port = int(os.getenv("PORT", 8000))
     config = uvicorn.Config(app, host="0.0.0.0", port=port, loop="asyncio")
     server = uvicorn.Server(config)
+    
     asyncio.create_task(auto_delete_worker())
+    
     await bot.delete_webhook(drop_pending_updates=True)
     await asyncio.gather(server.serve(), dp.start_polling(bot))
 
