@@ -34,7 +34,7 @@ pyro_bot = PyroClient("bot_pyro_session", api_id=API_ID, api_hash=API_HASH, bot_
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 client = AsyncIOMotorClient(MONGO_URL)
-db = client['moviedatabase']
+db = client['movatabase']
 
 admin_temp = {}
 admin_cache = set([OWNER_ID]) 
@@ -1216,7 +1216,7 @@ async def trending_movies(uid: int = 0):
 
 @app.get("/api/list")
 async def list_movies(page: int = 1, q: str = "", uid: int = 0):
-    limit = 100
+    limit = 1000
     skip = (page - 1) * limit
     query = {"title": {"$regex": q, "$options": "i"}} if q else {}
     
