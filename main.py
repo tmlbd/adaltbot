@@ -34,7 +34,7 @@ pyro_bot = PyroClient("bot_pyro_session", api_id=API_ID, api_hash=API_HASH, bot_
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 client = AsyncIOMotorClient(MONGO_URL)
-db = client['movie_database]
+db = client['movie_database']
 
 admin_temp = {}
 admin_cache = set([OWNER_ID]) 
