@@ -17,7 +17,7 @@ from pyrogram import Client as PyroClient # ২ জিবি ফাইল সা
 TOKEN = os.getenv("BOT_TOKEN", "8726013622:AAHe9hpP52qVyNtleia2QtnCu7UJc0mJXOI")
 MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://akash:akash@cluster0.etisrpx.mongodb.net/?appName=Cluster0")
 OWNER_ID = int(os.getenv("ADMIN_ID", "7525127704")) 
-APP_URL = os.getenv("APP_URL", "https://rare-rori-yeasinvai-bf8e2c68.koyeb.app/")
+APP_URL = os.getenv("APP_URL", "https://mere-lotta-akashvaikh-5fce0567.koyeb.app/")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "-1003536485803") # আপনার চ্যানেলের আইডি এখানে দিন
 
 # ২ জিবি ফাইল ডাউনলোডের জন্য API ID এবং HASH (এড করা হলো)
