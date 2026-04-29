@@ -15,7 +15,7 @@ from pyrogram import Client as PyroClient # ২ জিবি ফাইল সা
 
 # --- কনফিগারেশন ---
 TOKEN = os.getenv("BOT_TOKEN", "8726013622:AAHe9hpP52qVyNtleia2QtnCu7UJc0mJXOI")
-MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://akash:akash@cluster0.etisrpx.mongodb.net/?appName=Cluster0")
+MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://yiyija4741:SofeKOWRWJz2ej2R@cluster0.mmixtnq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 OWNER_ID = int(os.getenv("ADMIN_ID", "7525127704")) 
 APP_URL = os.getenv("APP_URL", "https://mere-lotta-akashvaikh-5fce0567.koyeb.app/")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "-1003536485803") # আপনার চ্যানেলের আইডি এখানে দিন
