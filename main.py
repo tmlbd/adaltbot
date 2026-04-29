@@ -1,4 +1,4 @@
-import os, asyncio, datetime, uvicorn, random, re, subprocess
+import os, asyncio, datetime, uvicorn, random, re, subprocess, json
 import aiohttp
 from fastapi import FastAPI, Body, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -251,9 +251,12 @@ async def list_ad_links(m: types.Message):
 async def del_ad_link(m: types.Message):
     if m.from_user.id not in admin_cache: return
     try:
-        link_id = m.text.split(" ", 1)[1]
-        await db.ad_links.delete_one({"_id": ObjectId(link_id)})
-        await m.answer("✅ লিঙ্কটি ডিলিট করা হয়েছে।")
+        link_id = m.text.split(" ", 1)[1].strip()
+        res = await db.ad_links.delete_one({"_id": ObjectId(link_id)})
+        if res.deleted_count > 0:
+            await m.answer("✅ লিঙ্কটি ডিলিট করা হয়েছে।")
+        else:
+            await m.answer("❌ কোনো লিঙ্ক পাওয়া যায়নি এই আইডি দিয়ে।")
     except: await m.answer("⚠️ নিয়ম: `/dellink ID` (ID পাবেন /links কমান্ডে)")
 
 # --- নতুন অ্যাড সুইচ কমান্ড ---
@@ -478,8 +481,9 @@ async def set_del_time(m: types.Message):
 async def set_ad(m: types.Message):
     if m.from_user.id in admin_cache:
         try:
-            await db.settings.update_one({"id": "ad_config"}, {"$set": {"zone_id": m.text.split(" ")[1]}}, upsert=True)
-            await m.answer("✅ জোন আপডেট হয়েছে।")
+            zone_id = m.text.split(" ")[1]
+            await db.settings.update_one({"id": "ad_config"}, {"$set": {"zone_id": zone_id}}, upsert=True)
+            await m.answer(f"✅ জোন আইডি আপডেট হয়েছে: <code>{zone_id}</code>", parse_mode="HTML")
         except: await m.answer("⚠️ সঠিক নিয়ম: <code>/setad 1234567</code>", parse_mode="HTML")
 
 @dp.message(Command("settg"))
@@ -780,6 +784,7 @@ async def web_ui():
             let tg = window.Telegram.WebApp; tg.expand();
             const ZONE_ID = "{{ZONE_ID}}";
             const MONETAG_ON = {{MONETAG_ON}};
+            const ADLINK_ON = {{ADLINK_ON}};
             const DIRECT_LINKS = {{DIRECT_LINKS}};
             const TOTAL_STEPS = {{TOTAL_STEPS}};
             let uid = tg.initDataUnsafe.user?.id || 0;
@@ -831,14 +836,21 @@ async def web_ui():
             function showAdScreen() {
                 document.getElementById('stepLabel').innerText = `Step ${currentAdStep}/${TOTAL_STEPS}`;
                 document.getElementById('btnVisit').style.display = 'block'; document.getElementById('btnNext').style.display = 'none'; document.getElementById('timer').innerText = "15";
-                document.getElementById('btnVisit').href = DIRECT_LINKS[Math.floor(Math.random() * DIRECT_LINKS.length)] || "#";
+                
+                let adUrl = "#";
+                if(ADLINK_ON && DIRECT_LINKS.length > 0) {
+                    adUrl = DIRECT_LINKS[Math.floor(Math.random() * DIRECT_LINKS.length)];
+                } else if(MONETAG_ON) {
+                    adUrl = `https://pukmousa.com/4/8802271?var=${ZONE_ID}`;
+                }
+                document.getElementById('btnVisit').href = adUrl;
             }
 
             function startTimer() {
                 let t = 15; document.getElementById('btnVisit').style.pointerEvents = 'none';
                 let iv = setInterval(() => {
                     t--; document.getElementById('timer').innerText = t;
-                    if(t <= 0) { clearInterval(iv); document.getElementById('btnVisit').style.display = 'none'; document.getElementById('btnNext').style.display = 'block'; }
+                    if(t <= 0) { clearInterval(iv); document.getElementById('btnVisit').style.display = 'none'; document.getElementById('btnNext').style.display = 'block'; document.getElementById('btnVisit').style.pointerEvents = 'auto';}
                 }, 1000);
             }
 
@@ -858,9 +870,9 @@ async def web_ui():
     </body>
     </html>
     """
-    final_html = html_code.replace("{{ZONE_ID}}", zone_id).replace("{{TG_LINK}}", tg_url).replace("{{LINK_18}}", link_18).replace("{{SITE_NAME}}", site_name)
+    final_html = html_code.replace("{{ZONE_ID}}", str(zone_id)).replace("{{TG_LINK}}", tg_url).replace("{{LINK_18}}", link_18).replace("{{SITE_NAME}}", site_name)
     final_html = final_html.replace("{{NOTICE_TEXT}}", notice_text).replace("{{TOTAL_STEPS}}", str(total_steps)).replace("{{HEADER_AD}}", header_code).replace("{{MIDDLE_AD}}", middle_code).replace("{{FOOTER_AD}}", footer_code)
-    final_html = final_html.replace("{{MONETAG_ON}}", "true" if monetag_on else "false").replace("{{DIRECT_LINKS}}", str(direct_links))
+    final_html = final_html.replace("{{MONETAG_ON}}", "true" if monetag_on else "false").replace("{{ADLINK_ON}}", "true" if adlink_on else "false").replace("{{DIRECT_LINKS}}", json.dumps(direct_links))
     return final_html
 
 # ==========================================
